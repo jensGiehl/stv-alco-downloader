@@ -76,6 +76,19 @@ class PageParserTest {
         assertThat(resolved).hasToString("https://stv.alco-web.de/homeV.php?aktion=anzeigen&id=2");
     }
 
+    @Test
+    void encodesUnescapedPercentSignsWithoutChangingValidPercentEncoding() {
+        URI resolved = UriTools.resolve(URI.create("https://stv.alco-web.de/mda-salden.php"),
+                "kontoauszug.php?ID=11&NAME=Wartung BHKW 70%&KTNTYP=GV");
+        URI alreadyEncoded = UriTools.resolve(URI.create("https://stv.alco-web.de/mda-salden.php"),
+                "kontoauszug.php?ID=1&NAME=Erhaltungsr%C3%BCcklage&KTNTYP=GE");
+
+        assertThat(resolved).hasToString(
+                "https://stv.alco-web.de/kontoauszug.php?ID=11&NAME=Wartung%20BHKW%2070%25&KTNTYP=GV");
+        assertThat(alreadyEncoded).hasToString(
+                "https://stv.alco-web.de/kontoauszug.php?ID=1&NAME=Erhaltungsr%C3%BCcklage&KTNTYP=GE");
+    }
+
     private HttpResult html(String uri, String body) {
         return new HttpResult(URI.create(uri), 200, "text/html; charset=UTF-8",
                 body.getBytes(StandardCharsets.UTF_8));

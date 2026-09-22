@@ -54,6 +54,10 @@ class AlcoCrawlerIntegrationTest {
                         + "<table><tr><th>Datum</th><th>Text</th></tr><tr><td>22.09.2026</td><td>Booking</td></tr></table>"
                         + "</body></html>", null);
         });
+        server.createContext("/mda-salden.php", exchange -> response(exchange,
+                "<html><body>Angaben für den Zeitraum: 01.01.2026 - 31.12.2026"
+                        + "<a href=\"kontoauszug.php?ID=11&amp;NAME=Wartung BHKW 70%&amp;KTNTYP=GV\">Konto</a>"
+                        + "</body></html>", null));
         server.createContext("/obj-abrechnung.php", exchange -> response(exchange,
                 "<html><body><select name=\"abrechnungszeit\"><option value=\"0\" selected>"
                         + "01.01.2025 - 31.12.2025</option></select></body></html>", null));
@@ -81,8 +85,15 @@ class AlcoCrawlerIntegrationTest {
         Path snapshot = crawler.crawl();
 
         assertThat(Files.readString(snapshot.resolve("manifest.json"))).contains("\"status\" : \"COMPLETE\"");
-        assertThat(Files.walk(snapshot.resolve("data/contracts/0")).filter(Files::isRegularFile).count())
+        Path contractDirectory = snapshot.resolve("data/contracts/0");
+        assertThat(Files.walk(contractDirectory).filter(Files::isRegularFile).count())
                 .isGreaterThanOrEqualTo(6);
+        try (var files = Files.list(contractDirectory)) {
+            Path balances = files.filter(path -> path.getFileName().toString().endsWith("-balances.json"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(Files.readString(balances)).contains("Wartung%20BHKW%2070%25");
+        }
         assertThat(accountRequests).hasValue(1);
     }
 
@@ -106,7 +117,7 @@ class AlcoCrawlerIntegrationTest {
         assertThat(exitCode).isZero();
         assertThat(springOutput).isDirectoryContaining(path -> path.getFileName().toString().endsWith("Z"));
         assertThat(output).contains("ALCO backup finished: status=SUCCESS")
-                .contains("contractsCompleted=1, contractsDiscovered=1, pages=6")
+                .contains("contractsCompleted=1, contractsDiscovered=1, pages=7")
                 .contains("documentsDownloaded=0, documentsDiscovered=0, attachmentBytes=0, warnings=0");
     }
 
@@ -133,7 +144,7 @@ class AlcoCrawlerIntegrationTest {
                 <html><body><div>Vertrag:</div><table>
                 <tr><th>Link</th><th>Vertrag</th><th>Objekt</th></tr>
                 <tr><td><a href="?aktion=anzeigen&id=0">check_box</a></td><td>71-10-1</td><td>Objekt</td></tr>
-                </table></body></html>
+                </table><a href="mda-salden.php">Salden</a></body></html>
                 """;
     }
 
