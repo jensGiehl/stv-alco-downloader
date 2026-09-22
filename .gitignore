@@ -1,0 +1,8 @@
+target/
+.idea/
+*.iml
+.vscode/
+backups/
+.env
+stv-alco.env
+dependency-reduced-pom.xml

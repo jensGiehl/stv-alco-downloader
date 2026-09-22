@@ -1,0 +1,8 @@
+.git
+.idea
+.vscode
+target
+backups
+stv-alco.env
+.env
+*.iml

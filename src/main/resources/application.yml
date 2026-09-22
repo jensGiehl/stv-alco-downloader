@@ -1,0 +1,19 @@
+spring:
+  main:
+    banner-mode: "off"
+    web-application-type: none
+  application:
+    name: stv-alco-downloader
+
+alco:
+  base-url: ${ALCO_BASE_URL:https://stv.alco-web.de}
+  username: ${ALCO_USERNAME:}
+  password: ${ALCO_PASSWORD:}
+  output-dir: ${ALCO_OUTPUT_DIR:./backups}
+  period: ${ALCO_PERIOD:all}
+  request-delay: ${ALCO_REQUEST_DELAY:500ms}
+
+logging:
+  level:
+    root: INFO
+    de.agiehl: INFO
