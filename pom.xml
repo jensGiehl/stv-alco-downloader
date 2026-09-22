@@ -16,6 +16,14 @@
     <version>1.0.0-SNAPSHOT</version>
     <name>stv-alco-downloader</name>
     <description>Read-only backup crawler for STV ALCO-web</description>
+    <url>https://github.com/jensGiehl/stv-alco-downloader</url>
+
+    <scm>
+        <connection>scm:git:https://github.com/jensGiehl/stv-alco-downloader.git</connection>
+        <developerConnection>scm:git:git@github.com:jensGiehl/stv-alco-downloader.git</developerConnection>
+        <url>https://github.com/jensGiehl/stv-alco-downloader</url>
+        <tag>HEAD</tag>
+    </scm>
 
     <properties>
         <java.version>26</java.version>

@@ -1,5 +1,7 @@
 # STV ALCO Downloader
 
+[![Docker-Image bauen](https://github.com/jensGiehl/stv-alco-downloader/actions/workflows/docker-image.yml/badge.svg)](https://github.com/jensGiehl/stv-alco-downloader/actions/workflows/docker-image.yml)
+
 Der STV ALCO Downloader ist eine rein lesende Spring-Boot-Batchanwendung. Sie meldet sich bei
 `https://stv.alco-web.de` an, durchläuft alle zugänglichen Verträge und speichert strukturierte JSON-Daten,
 die ursprünglichen HTML-Seiten sowie verlinkte PDF-Dokumente in einem unveränderlichen Snapshot.
@@ -54,6 +56,8 @@ Stammdaten, Vertragsdaten und zeitunabhängige Dokumente werden in jedem Modus g
 Projekt bauen und testen:
 
 ```bash
+git clone https://github.com/jensGiehl/stv-alco-downloader.git
+cd stv-alco-downloader
 ./mvnw clean verify
 ```
 
@@ -101,6 +105,26 @@ docker build -t stv-alco-downloader:latest .
 Das Multi-Stage-Image verwendet Java 26. Der Prozess läuft als nicht privilegierter Benutzer und schreibt nur
 in das eingebundene Verzeichnis `/data`.
 
+### GitHub Actions und Container Registry
+
+Bei jedem Push auf `main` oder `master` baut die GitHub Action `.github/workflows/docker-image.yml` das
+Docker-Image und veröffentlicht es in der GitHub Container Registry. Der Maven-Build und die Tests laufen dabei
+im Build-Stage des Dockerfiles. Das Image erhält folgende Tags:
+
+- `ghcr.io/jensgiehl/stv-alco-downloader:latest`
+- `ghcr.io/jensgiehl/stv-alco-downloader:main` beziehungsweise `:master`
+- `ghcr.io/jensgiehl/stv-alco-downloader:sha-<commit>`
+
+Die Action nutzt das bereitgestellte `GITHUB_TOKEN`; es muss dafür kein zusätzliches Secret angelegt werden.
+Ob das erzeugte Package öffentlich oder privat ist, wird in den Package-Einstellungen des
+[GitHub-Repositories](https://github.com/jensGiehl/stv-alco-downloader) festgelegt.
+
+Für ein privates Package muss sich der Zielserver vor dem Abruf bei GHCR anmelden:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u jensGiehl --password-stdin
+```
+
 Eine Credential-Datei kann anhand von `stv-alco.env.example` angelegt werden:
 
 ```dotenv
@@ -134,10 +158,10 @@ Container.
 ### Hintergrundstart mit veröffentlichtem Image
 
 `IMAGE` muss durch den Namen des veröffentlichten Images ersetzt werden, beispielsweise
-`registry.example.org/stv-alco-downloader:latest`.
+`ghcr.io/jensgiehl/stv-alco-downloader:latest`.
 
 ```bash
-IMAGE=registry.example.org/stv-alco-downloader:latest
+IMAGE=ghcr.io/jensgiehl/stv-alco-downloader:latest
 
 docker rm -f stv-alco-downloader 2>/dev/null
 
@@ -160,7 +184,7 @@ automatisch, sobald der Crawl abgeschlossen ist. Status und Exit-Code können da
 Die Planung erfolgt auf dem Host. Beispiel für einen Lauf täglich um 03:15 Uhr:
 
 ```cron
-15 3 * * * docker run --rm --name stv-alco-downloader --env-file /opt/stv-alco-downloader/stv-alco.env -v /srv/stv-alco-backups:/data stv-alco-downloader:latest >> /var/log/stv-alco-downloader.log 2>&1
+15 3 * * * docker run --rm --pull=always --name stv-alco-downloader --env-file /opt/stv-alco-downloader/stv-alco.env -v /srv/stv-alco-backups:/data ghcr.io/jensgiehl/stv-alco-downloader:latest >> /var/log/stv-alco-downloader.log 2>&1
 ```
 
 ## Exit-Codes
