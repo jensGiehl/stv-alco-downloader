@@ -92,8 +92,14 @@ Jeder Lauf erzeugt unterhalb von `ALCO_OUTPUT_DIR` einen eigenen UTC-Zeitstempel
 
 ```text
 backups/
+├── index.html
+├── assets/
 └── 20260922-201530-123Z/
     ├── manifest.json
+    ├── index.html
+    ├── documents.html
+    ├── contracts/<id>/index.html
+    ├── assets/
     ├── data/
     │   ├── contracts.json
     │   ├── documents.json
@@ -107,6 +113,11 @@ backups/
 `manifest.json` enthält den Status `RUNNING`, `COMPLETE` oder `FAILED`. Fehlgeschlagene Läufe bleiben zu
 Diagnosezwecken erhalten. PDFs werden anhand ihrer ALCO-Dokument-ID nicht mehrfach geladen und anhand der
 SHA-256-Prüfsumme nicht mehrfach gespeichert.
+
+Die `index.html` im Root des Backup-Ordners zeigt alle vorhandenen Sicherungsläufe. Jeder Snapshot besitzt
+zusätzlich eine eigene `index.html`. Von dort führen Links zu den Vertragsdetails, Tabellen, Seitentexten,
+Originalseiten und zur zentralen Dokumentübersicht. Die mitgelieferten Bootstrap-Assets liegen vollständig im
+Backup; zum Lesen ist weder ein Webserver noch eine Internetverbindung erforderlich.
 
 Die Dateien enthalten personenbezogene und finanzielle Daten. Der Backup-Ordner muss entsprechend geschützt
 und in eine vorhandene Sicherungsstrategie aufgenommen werden.

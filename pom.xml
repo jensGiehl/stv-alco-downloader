@@ -28,6 +28,7 @@
     <properties>
         <java.version>26</java.version>
         <jsoup.version>1.21.2</jsoup.version>
+        <bootstrap.version>5.3.8</bootstrap.version>
         <excluded.test.groups>live</excluded.test.groups>
     </properties>
 
@@ -40,6 +41,11 @@
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <version>${jsoup.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.webjars</groupId>
+            <artifactId>bootstrap</artifactId>
+            <version>${bootstrap.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

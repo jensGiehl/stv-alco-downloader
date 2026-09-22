@@ -40,6 +40,14 @@ class SnapshotStoreTest {
         assertThat(firstFile).isEqualTo(duplicateFile);
         assertThat(store.root().getFileName().toString()).isEqualTo("20260922-101530-000Z");
         assertThat(Files.readString(store.root().resolve("manifest.json"))).contains("\"status\" : \"COMPLETE\"");
+        assertThat(Files.readString(store.root().resolve("index.html")))
+                .contains("Ihre Daten auf einen Blick", "71-10-1");
+        assertThat(Files.readString(store.root().resolve("contracts/0/index.html")))
+                .contains("Contract", "Startseite", "Originalseite öffnen");
+        assertThat(Files.readString(store.root().resolve("documents.html"))).contains("Gespeicherte Dokumente");
+        assertThat(Files.readString(temporaryDirectory.resolve("index.html")))
+                .contains("Ihre ALCO-Snapshots", "20260922-101530-000Z");
+        assertThat(store.root().resolve("assets/bootstrap.min.css")).exists();
         assertThat(Files.walk(store.root().resolve("raw")).filter(Files::isRegularFile).count()).isEqualTo(2);
         assertThat(Files.list(store.root().resolve("attachments"))).hasSize(1);
     }
