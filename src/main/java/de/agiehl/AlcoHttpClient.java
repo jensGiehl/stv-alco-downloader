@@ -15,11 +15,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 final class AlcoHttpClient {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AlcoHttpClient.class);
     private static final Set<String> ALLOWED_POST_PATHS = Set.of("/index.php", "/obj-abrechnung.php");
     private static final Set<String> FORBIDDEN_PATHS = Set.of("/writeinfo.php", "/sd-safe.php", "/changepw.php",
             "/changeun.php", "/admcpw.php", "/logout.php", "/pdf.php");
@@ -92,15 +95,20 @@ final class AlcoHttpClient {
         RuntimeException lastFailure = null;
         for (int attempt = 1; attempt <= 3; attempt++) {
             awaitRateLimit();
+            long startedNanos = System.nanoTime();
+            LOGGER.debug("Sending HTTP {} request to {} (attempt {}/3)", originalRequest.method(),
+                    originalRequest.uri().getPath(), attempt);
             try {
                 HttpRequest request = cloneRequest(originalRequest);
                 HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
                 String contentType = response.headers().firstValue("Content-Type").orElse("");
                 HttpResult result = new HttpResult(response.uri(), response.statusCode(), contentType, response.body());
+                LOGGER.debug("Received HTTP {} from {} in {} ms ({} bytes)", response.statusCode(),
+                        response.uri().getPath(), elapsedMillis(startedNanos), response.body().length);
                 if (response.statusCode() == 429 || response.statusCode() >= 500) {
                     lastFailure = new CrawlerException("Remote service temporarily failed with HTTP "
                             + response.statusCode() + " on " + response.uri().getPath());
-                    backoff(attempt);
+                    handleRetry(attempt, "HTTP " + response.statusCode(), response.uri().getPath());
                     continue;
                 }
                 if (response.statusCode() < 200 || response.statusCode() >= 400) {
@@ -114,7 +122,7 @@ final class AlcoHttpClient {
             } catch (IOException exception) {
                 lastFailure = new CrawlerException("Network request failed on " + originalRequest.uri().getPath(),
                         exception);
-                backoff(attempt);
+                handleRetry(attempt, "Network request failed", originalRequest.uri().getPath());
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 throw new CrawlerException("Network request was interrupted", exception);
@@ -164,6 +172,15 @@ final class AlcoHttpClient {
         sleep(Duration.ofSeconds(1L << Math.max(0, attempt - 1)));
     }
 
+    private void handleRetry(int attempt, String failure, String path) {
+        if (attempt < 3) {
+            LOGGER.warn("{} on {}; retrying after backoff (attempt {}/3)", failure, path, attempt);
+            backoff(attempt);
+        } else {
+            LOGGER.warn("{} on {}; no retry attempts remaining", failure, path);
+        }
+    }
+
     private void sleep(Duration duration) {
         try {
             Thread.sleep(duration);
@@ -175,6 +192,10 @@ final class AlcoHttpClient {
 
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private long elapsedMillis(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000;
     }
 
     private static boolean isLoginPage(String html) {

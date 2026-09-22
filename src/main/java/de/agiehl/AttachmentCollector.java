@@ -11,7 +11,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 final class AttachmentCollector {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AttachmentCollector.class);
 
     private final Map<String, PendingDocument> documents = new LinkedHashMap<>();
 
@@ -29,7 +34,11 @@ final class AttachmentCollector {
 
     List<DocumentData> downloadAll(AlcoHttpClient client, SnapshotStore store) {
         List<DocumentData> downloaded = new ArrayList<>();
+        int index = 0;
         for (PendingDocument pending : documents.values()) {
+            index++;
+            LOGGER.info("Downloading document {}/{}: id='{}', title='{}'", index, documents.size(), pending.id,
+                    pending.title);
             HttpResult result = client.get(URI.create(pending.href));
             byte[] bytes = result.body();
             if (!isPdf(bytes, result.contentType())) {
@@ -41,8 +50,14 @@ final class AttachmentCollector {
                     : result.contentType().split(";", 2)[0].trim();
             downloaded.add(new DocumentData(pending.id, pending.title, pending.href, contentType, bytes.length,
                     sha256, storedFile, List.copyOf(pending.sources)));
+            LOGGER.info("Stored document {}/{}: id='{}', bytes={}", index, documents.size(), pending.id,
+                    bytes.length);
         }
         return List.copyOf(downloaded);
+    }
+
+    int size() {
+        return documents.size();
     }
 
     private boolean isPdf(byte[] bytes, String contentType) {

@@ -40,6 +40,21 @@ java -jar target/stv-alco-downloader-1.0.0-SNAPSHOT.jar --alco.period=current-ye
 
 Die Zugangsdaten bleiben dabei weiterhin in `ALCO_USERNAME` und `ALCO_PASSWORD`.
 
+## Protokollierung
+
+Die Anwendung protokolliert auf `INFO`, woran sie gerade arbeitet. Dazu gehören Anmeldung, gefundene
+Verträge, bearbeitete Bereiche und Zeiträume sowie der Fortschritt beim Herunterladen von Dokumenten. Die
+letzte Logzeile jedes Laufs enthält unabhängig vom Erfolg eine Zusammenfassung mit Status, Laufzeit,
+Versuchen, Session-Neustarts, bearbeiteten Verträgen und Seiten, Dokumenten, PDF-Datenmenge, Warnungen und
+Snapshot-Pfad. Zugangsdaten und URL-Parameter werden nicht ausgegeben.
+
+Für die technische Fehlersuche können zusätzlich die einzelnen HTTP-Aufrufe ohne Query-Parameter aktiviert
+werden:
+
+```bash
+java -jar target/stv-alco-downloader-1.0.0-SNAPSHOT.jar --logging.level.de.agiehl=DEBUG
+```
+
 ## Zeitraum-Modi
 
 - `all` lädt alle dynamisch angebotenen Abrechnungsjahre und navigiert Kontoauszüge und WEG-Salden bis zum

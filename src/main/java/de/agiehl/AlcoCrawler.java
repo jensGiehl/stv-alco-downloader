@@ -15,12 +15,15 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 final class AlcoCrawler {
 
     private static final int MAX_PERIOD_STEPS = 100;
+    private static final Logger LOGGER = LoggerFactory.getLogger(AlcoCrawler.class);
 
     private final AlcoProperties properties;
     private final AlcoHttpClient client;
@@ -40,22 +43,48 @@ final class AlcoCrawler {
     }
 
     Path crawl() {
+        return crawl(new CrawlProgress());
+    }
+
+    Path crawl(CrawlProgress progress) {
+        progress.startAttempt();
         properties.validate();
+        LOGGER.info("Authenticating with ALCO");
         client.authenticate();
+        LOGGER.info("Authentication successful");
         SnapshotStore store = new SnapshotStore(properties, clock);
+        progress.snapshotCreated(store.root());
+        LOGGER.info("Created snapshot directory {}", store.root());
         AttachmentCollector attachments = new AttachmentCollector();
         try {
+            LOGGER.info("Loading available contracts");
             HttpResult initialHome = client.get(client.resolve("/homeV.php"));
             List<ContractReference> contracts = parser.parseContracts(initialHome);
+            progress.contractsDiscovered(contracts.size());
             store.writeContracts(contracts);
-            for (ContractReference contract : contracts) {
+            LOGGER.info("Found {} contract(s)", contracts.size());
+            for (int index = 0; index < contracts.size(); index++) {
+                ContractReference contract = contracts.get(index);
+                LOGGER.info("Processing contract {}/{}: number='{}', description='{}'", index + 1,
+                        contracts.size(), contract.contractNumber(), contract.description());
                 crawlContract(contract, store, attachments);
+                progress.contractCompleted();
+                LOGGER.info("Completed contract {}/{}: number='{}'", index + 1, contracts.size(),
+                        contract.contractNumber());
             }
+            progress.documentsDiscovered(attachments.size());
+            LOGGER.info("Downloading {} unique document(s)", attachments.size());
             List<DocumentData> documents = attachments.downloadAll(client, store);
+            progress.documentsDownloaded(documents.size(), documents.stream().mapToLong(DocumentData::size).sum());
             store.writeDocuments(documents);
+            progress.pages(store.pageCount());
+            progress.warnings(store.warningCount());
             store.complete(clock.instant());
             return store.root();
         } catch (RuntimeException exception) {
+            progress.pages(store.pageCount());
+            progress.documentsDiscovered(attachments.size());
+            progress.warnings(store.warningCount());
             store.fail(clock.instant(), safeFailure(exception));
             throw exception;
         }
@@ -68,8 +97,11 @@ final class AlcoCrawler {
         crawlStaticPage("payment", "/vertragszahlung.php", contract, store, attachments);
         crawlStaticPage("unit", "/einheit.php", contract, store, attachments);
         HttpResult messages = crawlStaticPage("messages", "/infosend.php", contract, store, attachments);
-        for (URI detail : parser.parseIndexedDetailLinks(messages, "infosend.php",
-                Pattern.compile("(?:^|&)ID=\\d+(?:&|$)", Pattern.CASE_INSENSITIVE))) {
+        List<URI> messageDetails = parser.parseIndexedDetailLinks(messages, "infosend.php",
+                Pattern.compile("(?:^|&)ID=\\d+(?:&|$)", Pattern.CASE_INSENSITIVE));
+        LOGGER.info("Found {} message detail page(s) for contract '{}'", messageDetails.size(),
+                contract.contractNumber());
+        for (URI detail : messageDetails) {
             HttpResult message = client.get(detail);
             processPage("message-detail", contract.id(), message, Map.of(), store, attachments, false);
         }
@@ -81,15 +113,21 @@ final class AlcoCrawler {
         optionalFeatures.put("doc-beirat.php", "advisory-documents");
         for (Map.Entry<String, String> feature : optionalFeatures.entrySet()) {
             if (parser.hasFeature(home, feature.getKey())) {
+                LOGGER.info("Optional section '{}' is available for contract '{}'", feature.getValue(),
+                        contract.contractNumber());
                 crawlStaticPage(feature.getValue(), "/" + feature.getKey(), contract, store, attachments);
             }
         }
         if (parser.hasFeature(home, "obj-lieferanten.php")) {
+            LOGGER.info("Optional section 'suppliers' is available for contract '{}'", contract.contractNumber());
             HttpResult suppliers = crawlStaticPage("suppliers", "/obj-lieferanten.php", contract, store,
                     attachments);
-            for (URI detail : parser.parseIndexedDetailLinks(suppliers, "obj-lieferanten.php",
+            List<URI> supplierDetails = parser.parseIndexedDetailLinks(suppliers, "obj-lieferanten.php",
                     Pattern.compile("(?:^|&)aktion=anzeigen(?:&.*)?&id=\\d+(?:&|$)",
-                            Pattern.CASE_INSENSITIVE))) {
+                            Pattern.CASE_INSENSITIVE));
+            LOGGER.info("Found {} supplier detail page(s) for contract '{}'", supplierDetails.size(),
+                    contract.contractNumber());
+            for (URI detail : supplierDetails) {
                 HttpResult supplier = client.get(detail);
                 processPage("supplier-detail", contract.id(), supplier, Map.of(), store, attachments, false);
             }
@@ -113,9 +151,12 @@ final class AlcoCrawler {
 
     private void crawlPeriodPage(String section, String contractId, URI initialUri, SnapshotStore store,
                                  AttachmentCollector attachments, boolean filterMonth) {
+        LOGGER.info("Determining latest period for section '{}' and contract '{}'", section, contractId);
         HttpResult current = moveToLatestPeriod(initialUri);
         if (properties.getPeriod() != CrawlPeriod.ALL) {
             Map<String, String> context = periodContext(current, "YEAR");
+            LOGGER.info("Processing section '{}' for selected period '{}'", section,
+                    context.getOrDefault("period", "unknown"));
             processPage(section, contractId, current, context, store, attachments,
                     filterMonth && properties.getPeriod() == CrawlPeriod.CURRENT_MONTH);
             return;
@@ -127,6 +168,7 @@ final class AlcoCrawler {
             if (!visitedRanges.add(range)) {
                 return;
             }
+            LOGGER.info("Processing section '{}' for period '{}'", section, range);
             processPage(section, contractId, current, periodContext(current, "YEAR"), store, attachments, false);
             Optional<URI> previous = parser.findPeriodNavigation(current, "zurueck");
             if (previous.isEmpty()) {
@@ -144,6 +186,9 @@ final class AlcoCrawler {
 
     private HttpResult moveToLatestPeriod(URI initialUri) {
         HttpResult current = client.get(initialUri);
+        if (reachesCurrentPeriod(current)) {
+            return current;
+        }
         Set<String> visitedRanges = new LinkedHashSet<>();
         for (int step = 0; step < MAX_PERIOD_STEPS; step++) {
             String currentRange = parser.parsePeriodRange(current).orElse("unknown:" + current.uri());
@@ -157,6 +202,9 @@ final class AlcoCrawler {
             HttpResult candidate = client.get(forward.get());
             String candidateRange = parser.parsePeriodRange(candidate).orElse("unknown:" + candidate.uri());
             if (candidateRange.equals(currentRange) || visitedRanges.contains(candidateRange)) {
+                return current;
+            }
+            if (reachesCurrentPeriod(candidate)) {
                 return candidate;
             }
             current = candidate;
@@ -164,10 +212,22 @@ final class AlcoCrawler {
         throw new CrawlerException("Forward period navigation exceeded the safety limit on " + initialUri.getPath());
     }
 
+    private boolean reachesCurrentPeriod(HttpResult result) {
+        LocalDate today = LocalDate.now(clock.withZone(ZoneOffset.UTC));
+        Optional<LocalDate> end = parser.parsePeriodEnd(result);
+        boolean reached = end.filter(date -> !date.isBefore(today)).isPresent();
+        if (reached) {
+            LOGGER.info("Reached the current period ending on {}; skipping navigation into future periods",
+                    end.orElseThrow());
+        }
+        return reached;
+    }
+
     private void crawlSettlements(String contractId, SnapshotStore store, AttachmentCollector attachments) {
         URI uri = client.resolve("/obj-abrechnung.php");
         HttpResult initial = client.get(uri);
         List<SelectOption> available = parser.parseSettlementPeriods(initial);
+        LOGGER.info("Found {} settlement period(s) for contract '{}'", available.size(), contractId);
         if (available.isEmpty()) {
             processPage("settlement-overview", contractId, initial, Map.of("granularity", "YEAR"), store,
                     attachments, false);
@@ -177,13 +237,16 @@ final class AlcoCrawler {
                 ? available
                 : List.of(selectCurrentOrLatest(available));
         for (SelectOption option : selected) {
+            LOGGER.info("Processing settlement period '{}' for contract '{}'", option.label(), contractId);
             HttpResult overview = client.postForm(uri, Map.of("abrechnungszeit", option.value()));
             Map<String, String> context = Map.of(
                     "period", option.label(),
                     "periodValue", option.value(),
                     "granularity", "YEAR");
             processPage("settlement-overview", contractId, overview, context, store, attachments, false);
-            for (URI detailUri : parser.parseSettlementDetailLinks(overview)) {
+            List<URI> detailUris = parser.parseSettlementDetailLinks(overview);
+            LOGGER.info("Found {} settlement detail page(s) for period '{}'", detailUris.size(), option.label());
+            for (URI detailUri : detailUris) {
                 HttpResult detail = client.get(detailUri);
                 processPage("settlement-detail", contractId, detail, context, store, attachments,
                         properties.getPeriod() == CrawlPeriod.CURRENT_MONTH);
@@ -205,6 +268,9 @@ final class AlcoCrawler {
                 : parsed;
         store.writeSection(exported, result);
         attachments.register(exported);
+        LOGGER.info("Saved section '{}' for contract '{}': tables={}, items={}, links={}, documents={}", section,
+                contractId, exported.tables().size(), exported.items().size(), exported.links().size(),
+                exported.documents().size());
     }
 
     private Map<String, String> periodContext(HttpResult result, String granularity) {

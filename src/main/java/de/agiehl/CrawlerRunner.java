@@ -1,6 +1,6 @@
 package de.agiehl;
 
-import java.nio.file.Path;
+import java.net.URI;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,9 +25,13 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
 
     @Override
     public void run(ApplicationArguments args) {
+        long startedNanos = System.nanoTime();
+        CrawlProgress progress = new CrawlProgress();
         try {
             properties.validate();
-            runWithSingleSessionRestart();
+            LOGGER.info("Starting ALCO backup: baseUrl={}, period={}, outputDirectory={}", safeBaseUrl(),
+                    properties.getPeriod(), properties.getOutputDir().toAbsolutePath().normalize());
+            runWithSingleSessionRestart(progress);
         } catch (ConfigurationException | AuthenticationException exception) {
             exitCode = 2;
             LOGGER.error("Crawler configuration or authentication failed: {}", exception.getMessage());
@@ -41,6 +45,8 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
             exitCode = 3;
             LOGGER.error("The crawl failed unexpectedly: {}", exception.getClass().getSimpleName());
             LOGGER.debug("Unexpected crawler failure", exception);
+        } finally {
+            logSummary(progress, elapsedMillis(startedNanos));
         }
     }
 
@@ -49,19 +55,57 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
         return exitCode;
     }
 
-    private void runWithSingleSessionRestart() {
+    private void runWithSingleSessionRestart(CrawlProgress progress) {
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                Path snapshot = crawler.crawl();
-                LOGGER.info("Backup completed successfully in {}", snapshot);
+                crawler.crawl(progress);
                 exitCode = 0;
                 return;
             } catch (SessionExpiredException exception) {
                 if (attempt == 2) {
                     throw exception;
                 }
+                progress.sessionRestarted();
                 LOGGER.warn("The ALCO session expired; restarting the crawl once");
             }
         }
+    }
+
+    private void logSummary(CrawlProgress progress, long durationMillis) {
+        String status = exitCode == 0 ? "SUCCESS" : "FAILED";
+        String summary = "ALCO backup finished: status={}, durationMs={}, attempts={}, sessionRestarts={}, "
+                + "contractsCompleted={}, contractsDiscovered={}, pages={}, documentsDownloaded={}, "
+                + "documentsDiscovered={}, attachmentBytes={}, warnings={}, snapshot={}";
+        Object[] values = {
+                status,
+                durationMillis,
+                progress.attempts(),
+                progress.sessionRestarts(),
+                progress.contractsCompleted(),
+                progress.contractsDiscovered(),
+                progress.pages(),
+                progress.documentsDownloaded(),
+                progress.documentsDiscovered(),
+                progress.attachmentBytes(),
+                progress.warnings(),
+                progress.snapshot()
+        };
+        if (exitCode == 0) {
+            LOGGER.info(summary, values);
+        } else {
+            LOGGER.error(summary, values);
+        }
+    }
+
+    private long elapsedMillis(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000;
+    }
+
+    private String safeBaseUrl() {
+        URI baseUrl = properties.getBaseUrl();
+        String host = baseUrl.getHost().contains(":") ? "[" + baseUrl.getHost() + "]" : baseUrl.getHost();
+        String port = baseUrl.getPort() < 0 ? "" : ":" + baseUrl.getPort();
+        String path = baseUrl.getPath() == null ? "" : baseUrl.getPath();
+        return baseUrl.getScheme() + "://" + host + port + path;
     }
 }

@@ -104,6 +104,14 @@ final class SnapshotStore {
         warnings.add(warning);
     }
 
+    int warningCount() {
+        return warnings.size();
+    }
+
+    int pageCount() {
+        return pageCount;
+    }
+
     void complete(Instant finishedAt) {
         manifest.put("status", "COMPLETE");
         manifest.put("finishedAt", finishedAt);

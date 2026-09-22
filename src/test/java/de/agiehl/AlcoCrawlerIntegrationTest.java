@@ -12,23 +12,29 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.Banner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ConfigurableApplicationContext;
 
+@ExtendWith(OutputCaptureExtension.class)
 class AlcoCrawlerIntegrationTest {
 
     @TempDir
     Path outputDirectory;
     private HttpServer server;
+    private final AtomicInteger accountRequests = new AtomicInteger();
 
     @BeforeEach
     void startServer() throws IOException {
@@ -40,10 +46,14 @@ class AlcoCrawlerIntegrationTest {
         server.createContext("/vertragszahlung.php", exchange -> response(exchange, simplePage("Payment"), null));
         server.createContext("/einheit.php", exchange -> response(exchange, simplePage("Unit"), null));
         server.createContext("/infosend.php", exchange -> response(exchange, simplePage("Messages"), null));
-        server.createContext("/kontoauszug.php", exchange -> response(exchange,
-                "<html><body>Zeitraum: 01.01.2026 bis: 31.12.2026"
+        server.createContext("/kontoauszug.php", exchange -> {
+            int year = 2025 + accountRequests.incrementAndGet();
+            response(exchange,
+                    "<html><body>Zeitraum: 01.01." + year + " bis: 31.12." + year
+                        + "<a href=\"?AUFRUFTYP=V&ID=vor\">vor</a>"
                         + "<table><tr><th>Datum</th><th>Text</th></tr><tr><td>22.09.2026</td><td>Booking</td></tr></table>"
-                        + "</body></html>", null));
+                        + "</body></html>", null);
+        });
         server.createContext("/obj-abrechnung.php", exchange -> response(exchange,
                 "<html><body><select name=\"abrechnungszeit\"><option value=\"0\" selected>"
                         + "01.01.2025 - 31.12.2025</option></select></body></html>", null));
@@ -73,10 +83,11 @@ class AlcoCrawlerIntegrationTest {
         assertThat(Files.readString(snapshot.resolve("manifest.json"))).contains("\"status\" : \"COMPLETE\"");
         assertThat(Files.walk(snapshot.resolve("data/contracts/0")).filter(Files::isRegularFile).count())
                 .isGreaterThanOrEqualTo(6);
+        assertThat(accountRequests).hasValue(1);
     }
 
     @Test
-    void startsThroughSpringBootAndBindsEnvironmentStyleProperties() {
+    void startsThroughSpringBootAndLogsFinalSummary(CapturedOutput output) {
         SpringApplication application = new SpringApplication(StvAlcoDownloaderApplication.class);
         application.setBannerMode(Banner.Mode.OFF);
         application.setWebApplicationType(WebApplicationType.NONE);
@@ -94,6 +105,27 @@ class AlcoCrawlerIntegrationTest {
 
         assertThat(exitCode).isZero();
         assertThat(springOutput).isDirectoryContaining(path -> path.getFileName().toString().endsWith("Z"));
+        assertThat(output).contains("ALCO backup finished: status=SUCCESS")
+                .contains("contractsCompleted=1, contractsDiscovered=1, pages=6")
+                .contains("documentsDownloaded=0, documentsDiscovered=0, attachmentBytes=0, warnings=0");
+    }
+
+    @Test
+    void logsFinalSummaryWhenConfigurationIsInvalid(CapturedOutput output) {
+        SpringApplication application = new SpringApplication(StvAlcoDownloaderApplication.class);
+        application.setBannerMode(Banner.Mode.OFF);
+        application.setWebApplicationType(WebApplicationType.NONE);
+
+        ConfigurableApplicationContext context = application.run(
+                "--alco.username=",
+                "--alco.password=password",
+                "--logging.level.root=ERROR");
+        int exitCode = SpringApplication.exit(context);
+
+        assertThat(exitCode).isEqualTo(2);
+        assertThat(output).contains("ALCO backup finished: status=FAILED")
+                .contains("attempts=0, sessionRestarts=0")
+                .contains("snapshot=-");
     }
 
     private String home() {

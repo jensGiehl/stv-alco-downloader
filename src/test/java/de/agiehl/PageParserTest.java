@@ -61,6 +61,7 @@ class PageParserTest {
 
         SectionData filtered = parser.filterToCurrentMonth(parsed, LocalDate.of(2026, 9, 22));
 
+        assertThat(parser.parsePeriodEnd(result)).contains(LocalDate.of(2026, 12, 31));
         assertThat(filtered.tables().getFirst().rows()).hasSize(1);
         assertThat(filtered.documents()).extracting(DiscoveredDocument::id).containsExactly("1");
         assertThat(filtered.context()).containsEntry("filteredMonth", "2026-09");

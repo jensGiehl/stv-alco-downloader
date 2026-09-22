@@ -125,12 +125,27 @@ final class PageParser {
     }
 
     Optional<String> parsePeriodRange(HttpResult result) {
+        return parsePeriodDates(result)
+                .map(period -> GERMAN_DATE.format(period.start()) + " - " + GERMAN_DATE.format(period.end()));
+    }
+
+    Optional<LocalDate> parsePeriodEnd(HttpResult result) {
+        return parsePeriodDates(result).map(PeriodDates::end);
+    }
+
+    private Optional<PeriodDates> parsePeriodDates(HttpResult result) {
         Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
         String text = clean(document.body().text());
         for (Pattern pattern : List.of(ACCOUNT_RANGE, BALANCE_RANGE)) {
             Matcher matcher = pattern.matcher(text);
             if (matcher.find()) {
-                return Optional.of(matcher.group(1) + " - " + matcher.group(2));
+                try {
+                    return Optional.of(new PeriodDates(
+                            LocalDate.parse(matcher.group(1), GERMAN_DATE),
+                            LocalDate.parse(matcher.group(2), GERMAN_DATE)));
+                } catch (DateTimeParseException ignored) {
+                    return Optional.empty();
+                }
             }
         }
         return Optional.empty();
@@ -308,5 +323,8 @@ final class PageParser {
 
     private static String clean(String value) {
         return value == null ? "" : value.replaceAll("\\s+", " ").trim();
+    }
+
+    private record PeriodDates(LocalDate start, LocalDate end) {
     }
 }
