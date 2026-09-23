@@ -85,7 +85,7 @@ class RequestedCrawlWorkflowTest {
 
         Path snapshot = crawler.crawl();
 
-        assertThat(staticPageRequests).hasValue(3);
+        assertThat(staticPageRequests).hasValue(2);
         assertThat(accountRequests).hasValue(6);
         assertThat(balanceOverviewRequests).hasValue(4);
         assertThat(balanceDetailRequests).hasValue(3);
@@ -109,6 +109,9 @@ class RequestedCrawlWorkflowTest {
         assertThat(Files.readString(balanceDetail))
                 .contains("\"accountName\" : \"Vorschuss 2023\"")
                 .contains("\"storedFile\" : \"files/mda-salden-kontoauszug/2023/2023.pdf\"");
+        assertThat(Files.readString(snapshot.resolve("contracts/0/index.html")))
+                .contains("../../files/mda-salden-kontoauszug/2023/2023.pdf")
+                .doesNotContain("href=\"http://", "href=\"https://", "Quelle im Portal");
 
         Path resolution;
         try (var files = Files.list(snapshot.resolve("data/pages/beschluss/2026-09-23/0"))) {
@@ -117,6 +120,7 @@ class RequestedCrawlWorkflowTest {
         assertThat(Files.readString(resolution)).contains("Beschluss Fassade", "Sanierung beschlossen");
         assertThat(Files.walk(snapshot.resolve("data/pages/obj-lieferanten-detail"))
                 .filter(Files::isRegularFile).count()).isEqualTo(2);
+        assertThat(snapshot.resolve("data/pages/infosend")).doesNotExist();
     }
 
     private void staticPage(HttpExchange exchange, String text) throws IOException {

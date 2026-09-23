@@ -47,13 +47,18 @@ final class PageParser {
 
     SectionData parse(String section, String contractId, HttpResult result, Map<String, String> context) {
         Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
-        List<TableData> tables = parseTables(document);
-        List<ItemData> items = parseItems(document, section);
-        List<LinkData> links = parseLinks(document, result.uri());
-        List<DiscoveredDocument> documents = parseDocuments(document, result.uri(), section, contractId);
+        boolean supplierDetail = "obj-lieferanten-detail".equals(section);
+        Document structuredDocument = supplierDetail ? supplierAddressDocument(document) : document;
+        Map<String, String> fields = parseFields(structuredDocument, section);
+        List<TableData> tables = supplierDetail ? List.of() : parseTables(document);
+        List<ItemData> items = supplierDetail ? List.of() : parseItems(document, section);
+        List<LinkData> links = supplierDetail ? List.of() : parseLinks(document, result.uri());
+        List<DiscoveredDocument> documents = supplierDetail
+                ? List.of()
+                : parseDocuments(document, result.uri(), section, contractId);
+        String pageText = supplierDetail ? supplierPageText(structuredDocument, fields) : clean(document.body().text());
         return new SectionData(section, contractId, result.uri().toString(), clock.instant(), clean(document.title()),
-                clean(document.body().text()), Map.copyOf(context), parseFields(document, section), tables, items, links,
-                documents);
+                pageText, Map.copyOf(context), fields, tables, items, links, documents);
     }
 
     List<ContractReference> parseContracts(HttpResult result) {
@@ -114,22 +119,6 @@ final class PageParser {
         for (Element link : document.select("a[href*='kontoauszug.php'][href*='ID='][href*='NAME='][href*='KTNTYP=']")) {
             URI uri = UriTools.resolve(result.uri(), link.attr("href"));
             if (uri != null) {
-                links.add(uri);
-            }
-        }
-        return List.copyOf(links);
-    }
-
-    List<URI> parseIndexedDetailLinks(HttpResult result, String endpoint, Pattern queryPattern) {
-        Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
-        Set<URI> links = new LinkedHashSet<>();
-        for (Element link : document.select("a[href]")) {
-            URI uri = UriTools.resolve(result.uri(), link.attr("href"));
-            if (uri == null || !uri.getPath().toLowerCase().endsWith(endpoint.toLowerCase())) {
-                continue;
-            }
-            String query = uri.getRawQuery() == null ? "" : uri.getRawQuery();
-            if (queryPattern.matcher(query).find()) {
                 links.add(uri);
             }
         }
@@ -342,16 +331,51 @@ final class PageParser {
             }
         }
         if (section.startsWith("obj-lieferanten")) {
+            for (Element address : document.select("address,[class*=adress],[id*=adress],[class*=anschrift],[id*=anschrift]")) {
+                if (!clean(address.text()).isBlank()) {
+                    fields.putIfAbsent("Adresse", clean(address.text()));
+                }
+            }
             for (Element row : document.select("tr")) {
                 List<Element> cells = row.select("td");
-                if (cells.size() == 2 && !clean(cells.getFirst().text()).isBlank()
+                if (row.select("a[href]").isEmpty() && cells.size() == 2
+                        && !clean(cells.getFirst().text()).isBlank()
                         && !clean(cells.getLast().text()).isBlank()) {
                     fields.putIfAbsent(withoutTrailingColon(clean(cells.getFirst().text())),
                             clean(cells.getLast().text()));
                 }
             }
+            for (Element row : document.select(".row")) {
+                List<Element> columns = row.children();
+                if (row.select("a[href]").isEmpty() && columns.size() == 2) {
+                    String key = clean(columns.getFirst().text());
+                    String value = clean(columns.getLast().text());
+                    if (!key.isBlank() && key.length() <= 80 && !value.isBlank() && !key.equals(value)) {
+                        fields.putIfAbsent(withoutTrailingColon(key), value);
+                    }
+                }
+            }
         }
         return Map.copyOf(fields);
+    }
+
+    private Document supplierAddressDocument(Document document) {
+        Document copy = document.clone();
+        copy.select("table").stream()
+                .filter(table -> !table.select("a[href*='obj-lieferanten.php']").isEmpty())
+                .forEach(Element::remove);
+        copy.select("nav,footer,script,style").remove();
+        return copy;
+    }
+
+    private String supplierPageText(Document document, Map<String, String> fields) {
+        if (!fields.isEmpty()) {
+            return fields.entrySet().stream()
+                    .map(entry -> entry.getKey() + ": " + entry.getValue())
+                    .reduce((left, right) -> left + " | " + right)
+                    .orElse("");
+        }
+        return clean(document.body().text());
     }
 
     private boolean hasDataRows(Element table) {

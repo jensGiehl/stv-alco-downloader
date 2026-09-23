@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
@@ -100,15 +99,6 @@ final class AlcoCrawler {
 
         crawlStaticPage("vertragszahlung", "/vertragszahlung.php", contract, store, attachments);
         crawlStaticPage("einheit", "/einheit.php", contract, store, attachments);
-        HttpResult messages = crawlStaticPage("infosend", "/infosend.php", contract, store, attachments);
-        List<URI> messageDetails = parser.parseIndexedDetailLinks(messages, "infosend.php",
-                Pattern.compile("(?:^|&)ID=\\d+(?:&|$)", Pattern.CASE_INSENSITIVE));
-        LOGGER.info("Found {} message detail page(s) for contract '{}'", messageDetails.size(),
-                contract.contractNumber());
-        for (URI detail : messageDetails) {
-            HttpResult message = client.get(detail);
-            processPage("infosend-detail", contract.id(), message, Map.of(), store, attachments, false);
-        }
 
         Map<String, String> optionalFeatures = new LinkedHashMap<>();
         optionalFeatures.put("showinfo.php", "showinfo");

@@ -281,7 +281,7 @@ final class HtmlReportWriter {
             result.append("<section class=\"item-card\"><h3>").append(escape(item.heading())).append("</h3><p>")
                     .append(formatText(item.content())).append("</p>").append(links(item.links())).append("</section>");
         }
-        if (!section.links().isEmpty()) {
+        if (section.links().stream().anyMatch(link -> link.storedFile() != null)) {
             result.append("<section class=\"link-block\"><h3>Verweise</h3>").append(links(section.links())).append("</section>");
         }
         if (!section.pageText().isBlank()) {
@@ -292,10 +292,6 @@ final class HtmlReportWriter {
         if (stored.rawPath() != null) {
             result.append("<a href=\"../../").append(escapeAttribute(stored.rawPath()))
                     .append("\" target=\"_blank\">Originalseite öffnen</a>");
-        }
-        if (safeWebUrl(section.sourceUrl())) {
-            result.append("<a href=\"").append(escapeAttribute(section.sourceUrl()))
-                    .append("\" target=\"_blank\" rel=\"noreferrer\">Quelle im Portal</a>");
         }
         result.append("<span>Erfasst: ").append(formatDate(section.capturedAt())).append("</span></div></div></details></article>");
         return result.toString();
@@ -321,19 +317,15 @@ final class HtmlReportWriter {
     }
 
     private String links(List<LinkData> values) {
+        List<LinkData> internalLinks = values.stream().filter(link -> link.storedFile() != null).toList();
+        if (internalLinks.isEmpty()) {
+            return "";
+        }
         StringBuilder result = new StringBuilder("<div class=\"data-links\">");
-        for (LinkData link : values) {
-            if (link.storedFile() != null) {
-                result.append("<a href=\"../../").append(escapeAttribute(link.storedFile()))
-                        .append("\" target=\"_blank\">")
-                        .append(escape(fallback(link.text(), "PDF öffnen"))).append("</a>");
-            } else if (safeWebUrl(link.href())) {
-                result.append("<a href=\"").append(escapeAttribute(link.href()))
-                        .append("\" target=\"_blank\" rel=\"noreferrer\">")
-                        .append(escape(fallback(link.text(), "Link öffnen"))).append(" ↗</a>");
-            } else {
-                result.append("<span>").append(escape(fallback(link.text(), link.href()))).append("</span>");
-            }
+        for (LinkData link : internalLinks) {
+            result.append("<a href=\"../../").append(escapeAttribute(link.storedFile()))
+                    .append("\" target=\"_blank\">")
+                    .append(escape(fallback(link.text(), "PDF öffnen"))).append("</a>");
         }
         return result.append("</div>").toString();
     }
@@ -513,14 +505,6 @@ final class HtmlReportWriter {
             return "%.1f KB".formatted(value / 1024.0);
         }
         return "%.1f MB".formatted(value / (1024.0 * 1024.0));
-    }
-
-    private boolean safeWebUrl(String value) {
-        if (value == null) {
-            return false;
-        }
-        String normalized = value.strip().toLowerCase();
-        return normalized.startsWith("https://") || normalized.startsWith("http://");
     }
 
     private String fallback(String value, String alternative) {

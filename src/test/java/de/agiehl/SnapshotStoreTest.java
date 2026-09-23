@@ -27,7 +27,8 @@ class SnapshotStoreTest {
         Clock clock = Clock.fixed(Instant.parse("2026-09-22T10:15:30Z"), ZoneOffset.UTC);
         SnapshotStore store = new SnapshotStore(properties, clock);
         HttpResult raw = new HttpResult(URI.create("https://stv.alco-web.de/homeV.php"), 200, "text/html",
-                "<html><body>Backup</body></html>".getBytes(StandardCharsets.UTF_8));
+                "<html><body>Backup <a href=\"https://stv.alco-web.de/einheit.php\">Portal</a></body></html>"
+                        .getBytes(StandardCharsets.UTF_8));
         SectionData section = new PageParser(clock).parse("home", "0", raw, Map.of());
 
         store.writeContracts(List.of(new ContractReference("0", "71-10-1", "Contract", raw.uri())));
@@ -44,7 +45,8 @@ class SnapshotStoreTest {
         assertThat(Files.readString(store.root().resolve("index.html")))
                 .contains("Ihre Daten auf einen Blick", "71-10-1");
         assertThat(Files.readString(store.root().resolve("contracts/0/index.html")))
-                .contains("Contract", "Startseite", "Originalseite öffnen");
+                .contains("Contract", "Startseite", "Originalseite öffnen")
+                .doesNotContain("href=\"https://stv.alco-web.de", "Quelle im Portal");
         assertThat(Files.readString(store.root().resolve("documents.html"))).contains("Gespeicherte Dokumente");
         assertThat(Files.readString(temporaryDirectory.resolve("index.html")))
                 .contains("Ihre ALCO-Snapshots", "2026-09-22_12_15");

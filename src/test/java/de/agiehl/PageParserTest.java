@@ -117,13 +117,20 @@ class PageParserTest {
     void parsesSupplierMasterDataFromDefinitionListsAndTwoColumnTables() {
         HttpResult result = html("https://stv.alco-web.de/obj-lieferanten.php?aktion=anzeigen&id=9", """
                 <html><body><dl><dt>Firma:</dt><dd>Beispiel GmbH</dd></dl>
-                <table><tr><td>Telefon:</td><td>01234 56789</td></tr></table></body></html>
+                <address>Hauptstraße 1, 12345 Musterstadt</address>
+                <table><tr><td>Telefon:</td><td>01234 56789</td></tr></table>
+                <table><tr><td><a href="obj-lieferanten.php?aktion=anzeigen&amp;id=10">Anderer Lieferant</a></td></tr></table>
+                </body></html>
                 """);
 
         SectionData section = parser.parse("obj-lieferanten-detail", "0", result, Map.of());
 
         assertThat(section.fields()).containsEntry("Firma", "Beispiel GmbH")
+                .containsEntry("Adresse", "Hauptstraße 1, 12345 Musterstadt")
                 .containsEntry("Telefon", "01234 56789");
+        assertThat(section.tables()).isEmpty();
+        assertThat(section.links()).isEmpty();
+        assertThat(section.pageText()).doesNotContain("Anderer Lieferant", "obj-lieferanten.php");
     }
 
     @Test

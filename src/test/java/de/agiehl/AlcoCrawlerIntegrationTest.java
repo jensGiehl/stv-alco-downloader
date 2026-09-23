@@ -95,7 +95,7 @@ class AlcoCrawlerIntegrationTest {
         assertThat(Files.readString(snapshot.resolve("manifest.json"))).contains("\"status\" : \"COMPLETE\"");
         Path pagesDirectory = snapshot.resolve("data/pages");
         assertThat(Files.walk(pagesDirectory).filter(Files::isRegularFile).count())
-                .isGreaterThanOrEqualTo(8);
+                .isGreaterThanOrEqualTo(7);
         try (var files = Files.list(pagesDirectory.resolve("mda-salden/2026/0"))) {
             Path balances = files.findFirst().orElseThrow();
             assertThat(Files.readString(balances)).contains("Wartung%20BHKW%2070%25");
@@ -124,7 +124,7 @@ class AlcoCrawlerIntegrationTest {
         assertThat(springOutput).isDirectoryContaining(path -> path.getFileName().toString()
                 .matches("\\d{4}-\\d{2}-\\d{2}_\\d{2}_\\d{2}(?:_\\d+)?"));
         assertThat(output).contains("ALCO backup finished: status=SUCCESS")
-                .contains("contractsCompleted=1, contractsDiscovered=1, pages=8")
+                .contains("contractsCompleted=1, contractsDiscovered=1, pages=7")
                 .contains("documentsDownloaded=0, documentsDiscovered=0, attachmentBytes=0, warnings=0");
     }
 

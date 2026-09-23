@@ -75,6 +75,8 @@ werden heruntergeladen; der relative lokale Pfad steht im jeweiligen JSON-Linkfe
 Auf `mda_objekte.php` beziehungsweise `mda-objekte.php` werden alle `showpdf.php?ID=...`-Dokumente geladen.
 Beschlüsse werden als Überschrift/Text-Paare aus dem `<p>` und dem nachfolgenden `<div>` abgelegt. Bei den
 Lieferanten wird jeder Tabellenlink geöffnet und die danach angezeigten Stammdaten werden als Felder gesichert.
+Dabei wird nur der obere Adress-/Stammdatenbereich übernommen; Links und die wiederholte Lieferantentabelle der
+Detailseite werden ignoriert. `infosend.php` und ihre Detailseiten gehören nicht zum Sicherungsumfang.
 
 ## Lokale Ausführung und IDE
 
@@ -137,8 +139,10 @@ Speicherfehler bleiben weiterhin fatal.
 
 Die `index.html` im Root des Backup-Ordners zeigt alle vorhandenen Sicherungsläufe. Jeder Snapshot besitzt
 zusätzlich eine eigene `index.html`. Von dort führen Links zu den Vertragsdetails, Tabellen, Seitentexten,
-Originalseiten und zur zentralen Dokumentübersicht. Die mitgelieferten Bootstrap-Assets liegen vollständig im
-Backup; zum Lesen ist weder ein Webserver noch eine Internetverbindung erforderlich.
+lokal gespeicherten Originalseiten und zur zentralen Dokumentübersicht. Der HTML-Report enthält keine Links
+zur STV-Website; alle anklickbaren Seiten- und PDF-Verweise zeigen ausschließlich auf Dateien innerhalb des
+Snapshots. Die mitgelieferten Bootstrap-Assets liegen vollständig im Backup; zum Lesen ist weder ein Webserver
+noch eine Internetverbindung erforderlich.
 
 Die Dateien enthalten personenbezogene und finanzielle Daten. Der Backup-Ordner muss entsprechend geschützt
 und in eine vorhandene Sicherungsstrategie aufgenommen werden.
