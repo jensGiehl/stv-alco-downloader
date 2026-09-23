@@ -88,13 +88,15 @@ Pfad für `ALCO_OUTPUT_DIR` hinterlegt werden.
 
 ## Ausgabeformat
 
-Jeder Lauf erzeugt unterhalb von `ALCO_OUTPUT_DIR` einen eigenen UTC-Zeitstempel-Ordner:
+Jeder Lauf erzeugt unterhalb von `ALCO_OUTPUT_DIR` einen eigenen Zeitstempel-Ordner mit deutscher Ortszeit
+im Format `yyyy-MM-dd_HH_mm`. Bei mehreren Starts innerhalb derselben Minute wird eine fortlaufende Nummer
+angehängt, damit die Dateien jedes Laufs getrennt bleiben:
 
 ```text
 backups/
 ├── index.html
 ├── assets/
-└── 20260922-201530-123Z/
+└── 2026-09-23_20_26/
     ├── manifest.json
     ├── index.html
     ├── documents.html

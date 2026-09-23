@@ -38,7 +38,7 @@ class SnapshotStoreTest {
         store.complete(clock.instant());
 
         assertThat(firstFile).isEqualTo(duplicateFile);
-        assertThat(store.root().getFileName().toString()).isEqualTo("20260922-101530-000Z");
+        assertThat(store.root().getFileName().toString()).isEqualTo("2026-09-22_12_15");
         assertThat(Files.readString(store.root().resolve("manifest.json"))).contains("\"status\" : \"COMPLETE\"");
         assertThat(Files.readString(store.root().resolve("index.html")))
                 .contains("Ihre Daten auf einen Blick", "71-10-1");
@@ -46,10 +46,23 @@ class SnapshotStoreTest {
                 .contains("Contract", "Startseite", "Originalseite öffnen");
         assertThat(Files.readString(store.root().resolve("documents.html"))).contains("Gespeicherte Dokumente");
         assertThat(Files.readString(temporaryDirectory.resolve("index.html")))
-                .contains("Ihre ALCO-Snapshots", "20260922-101530-000Z");
+                .contains("Ihre ALCO-Snapshots", "2026-09-22_12_15");
         assertThat(store.root().resolve("assets/bootstrap.min.css")).exists();
         assertThat(Files.walk(store.root().resolve("raw")).filter(Files::isRegularFile).count()).isEqualTo(2);
         assertThat(Files.list(store.root().resolve("attachments"))).hasSize(1);
+    }
+
+    @Test
+    void createsUniqueDirectoryForEachRunWithinTheSameMinute() {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-22T10:15:30Z"), ZoneOffset.UTC);
+
+        SnapshotStore firstStore = new SnapshotStore(properties(), clock);
+        SnapshotStore secondStore = new SnapshotStore(properties(), clock);
+
+        assertThat(firstStore.root().getFileName().toString()).isEqualTo("2026-09-22_12_15");
+        assertThat(secondStore.root().getFileName().toString()).isEqualTo("2026-09-22_12_15_2");
+        assertThat(firstStore.root()).isDirectory();
+        assertThat(secondStore.root()).isDirectory();
     }
 
     private AlcoProperties properties() {

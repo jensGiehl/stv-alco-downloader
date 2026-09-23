@@ -3,12 +3,13 @@ package de.agiehl;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,7 +24,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 final class SnapshotStore {
 
     private static final DateTimeFormatter DIRECTORY_FORMAT = DateTimeFormatter
-            .ofPattern("uuuuMMdd-HHmmss-SSS'Z'").withZone(ZoneOffset.UTC);
+            .ofPattern("uuuu-MM-dd_HH_mm").withZone(ZoneId.of("Europe/Berlin"));
 
     private final ObjectMapper objectMapper;
     private final Path root;
@@ -42,8 +43,7 @@ final class SnapshotStore {
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                 .enable(SerializationFeature.INDENT_OUTPUT);
         Instant startedAt = clock.instant();
-        this.root = properties.getOutputDir().toAbsolutePath().normalize()
-                .resolve(DIRECTORY_FORMAT.format(startedAt));
+        this.root = createSnapshotDirectory(properties.getOutputDir().toAbsolutePath().normalize(), startedAt);
         this.rawDirectory = root.resolve("raw");
         this.dataDirectory = root.resolve("data");
         this.attachmentDirectory = root.resolve("attachments");
@@ -61,6 +61,22 @@ final class SnapshotStore {
         manifest.put("baseUrl", properties.getBaseUrl().toString());
         manifest.put("period", properties.getPeriod().name());
         writeManifest();
+    }
+
+    private static Path createSnapshotDirectory(Path outputDirectory, Instant startedAt) {
+        try {
+            Files.createDirectories(outputDirectory);
+            String directoryName = DIRECTORY_FORMAT.format(startedAt);
+            for (int suffix = 1; ; suffix++) {
+                Path candidate = outputDirectory.resolve(suffix == 1 ? directoryName : directoryName + "_" + suffix);
+                try {
+                    return Files.createDirectory(candidate);
+                } catch (FileAlreadyExistsException ignored) {
+                }
+            }
+        } catch (IOException exception) {
+            throw new StorageException("Cannot create snapshot directory", exception);
+        }
     }
 
     Path root() {

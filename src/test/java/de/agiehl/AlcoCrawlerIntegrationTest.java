@@ -115,7 +115,8 @@ class AlcoCrawlerIntegrationTest {
         int exitCode = SpringApplication.exit(context);
 
         assertThat(exitCode).isZero();
-        assertThat(springOutput).isDirectoryContaining(path -> path.getFileName().toString().endsWith("Z"));
+        assertThat(springOutput).isDirectoryContaining(path -> path.getFileName().toString()
+                .matches("\\d{4}-\\d{2}-\\d{2}_\\d{2}_\\d{2}(?:_\\d+)?"));
         assertThat(output).contains("ALCO backup finished: status=SUCCESS")
                 .contains("contractsCompleted=1, contractsDiscovered=1, pages=7")
                 .contains("documentsDownloaded=0, documentsDiscovered=0, attachmentBytes=0, warnings=0");
