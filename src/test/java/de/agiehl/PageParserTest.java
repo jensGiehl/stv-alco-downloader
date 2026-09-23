@@ -77,6 +77,56 @@ class PageParserTest {
     }
 
     @Test
+    void parsesResolutionParagraphsAndFollowingDivisions() {
+        HttpResult result = html("https://stv.alco-web.de/beschluss.php", """
+                <html><body>
+                <p>Beschluss zur Fassade</p>
+                <div>Die Sanierung wurde beschlossen. <a href="showpdf.php?ID=77">Protokoll</a></div>
+                </body></html>
+                """);
+
+        SectionData section = parser.parse("beschluss", "0", result, Map.of());
+
+        assertThat(section.items()).singleElement().satisfies(item -> {
+            assertThat(item.heading()).isEqualTo("Beschluss zur Fassade");
+            assertThat(item.content()).isEqualTo("Die Sanierung wurde beschlossen. Protokoll");
+            assertThat(item.links()).singleElement().extracting(LinkData::href)
+                    .isEqualTo("https://stv.alco-web.de/showpdf.php?ID=77");
+        });
+    }
+
+    @Test
+    void detectsEmptyAccountOverviewAndBalanceData() {
+        HttpResult emptyAccount = html("https://stv.alco-web.de/kontoauszug.php", """
+                <html><body><h2>Ihre Buchungsübersicht</h2>
+                <table><tr><th>Datum</th><th>Buchungstext</th></tr></table></body></html>
+                """);
+        HttpResult balances = html("https://stv.alco-web.de/mda-salden.php", """
+                <html><body><table><tr><th>Bezeichnung</th><th>Saldo</th></tr>
+                <tr><td><a href="kontoauszug.php?ID=0&amp;NAME=Vorschuss&amp;KTNTYP=GE">Vorschuss</a></td>
+                <td>10,00 EUR</td></tr></table></body></html>
+                """);
+
+        assertThat(parser.isBookingOverviewEmpty(emptyAccount)).contains(true);
+        assertThat(parser.hasBalanceData(balances)).isTrue();
+        assertThat(parser.parseBalanceDetailLinks(balances)).singleElement().satisfies(uri ->
+                assertThat(uri.toString()).contains("ID=0", "NAME=Vorschuss", "KTNTYP=GE"));
+    }
+
+    @Test
+    void parsesSupplierMasterDataFromDefinitionListsAndTwoColumnTables() {
+        HttpResult result = html("https://stv.alco-web.de/obj-lieferanten.php?aktion=anzeigen&id=9", """
+                <html><body><dl><dt>Firma:</dt><dd>Beispiel GmbH</dd></dl>
+                <table><tr><td>Telefon:</td><td>01234 56789</td></tr></table></body></html>
+                """);
+
+        SectionData section = parser.parse("obj-lieferanten-detail", "0", result, Map.of());
+
+        assertThat(section.fields()).containsEntry("Firma", "Beispiel GmbH")
+                .containsEntry("Telefon", "01234 56789");
+    }
+
+    @Test
     void encodesUnescapedPercentSignsWithoutChangingValidPercentEncoding() {
         URI resolved = UriTools.resolve(URI.create("https://stv.alco-web.de/mda-salden.php"),
                 "kontoauszug.php?ID=11&NAME=Wartung BHKW 70%&KTNTYP=GV");

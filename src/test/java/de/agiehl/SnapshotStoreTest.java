@@ -37,7 +37,8 @@ class SnapshotStoreTest {
         store.writeDocuments(List.of());
         store.complete(clock.instant());
 
-        assertThat(firstFile).isEqualTo(duplicateFile);
+        assertThat(firstFile).isEqualTo("files/documents/2026-09-22/abc.pdf");
+        assertThat(duplicateFile).isEqualTo("files/documents/2026-09-22/abc_20260922_121530.pdf");
         assertThat(store.root().getFileName().toString()).isEqualTo("2026-09-22_12_15");
         assertThat(Files.readString(store.root().resolve("manifest.json"))).contains("\"status\" : \"COMPLETE\"");
         assertThat(Files.readString(store.root().resolve("index.html")))
@@ -49,7 +50,7 @@ class SnapshotStoreTest {
                 .contains("Ihre ALCO-Snapshots", "2026-09-22_12_15");
         assertThat(store.root().resolve("assets/bootstrap.min.css")).exists();
         assertThat(Files.walk(store.root().resolve("raw")).filter(Files::isRegularFile).count()).isEqualTo(2);
-        assertThat(Files.list(store.root().resolve("attachments"))).hasSize(1);
+        assertThat(Files.list(store.root().resolve("files/documents/2026-09-22"))).hasSize(2);
     }
 
     @Test

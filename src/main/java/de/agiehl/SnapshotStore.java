@@ -16,6 +16,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -25,8 +27,14 @@ final class SnapshotStore {
 
     private static final DateTimeFormatter DIRECTORY_FORMAT = DateTimeFormatter
             .ofPattern("uuuu-MM-dd_HH_mm").withZone(ZoneId.of("Europe/Berlin"));
+    private static final DateTimeFormatter DATE_DIRECTORY_FORMAT = DateTimeFormatter
+            .ofPattern("uuuu-MM-dd").withZone(ZoneId.of("Europe/Berlin"));
+    private static final DateTimeFormatter FILE_TIMESTAMP_FORMAT = DateTimeFormatter
+            .ofPattern("uuuuMMdd_HHmmss").withZone(ZoneId.of("Europe/Berlin"));
+    private static final Pattern YEAR = Pattern.compile("(?<!\\d)(\\d{4})(?!\\d)");
 
     private final ObjectMapper objectMapper;
+    private final Clock clock;
     private final Path root;
     private final Path rawDirectory;
     private final Path dataDirectory;
@@ -38,6 +46,7 @@ final class SnapshotStore {
     private int pageCount;
 
     SnapshotStore(AlcoProperties properties, Clock clock) {
+        this.clock = clock;
         this.objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
@@ -46,7 +55,7 @@ final class SnapshotStore {
         this.root = createSnapshotDirectory(properties.getOutputDir().toAbsolutePath().normalize(), startedAt);
         this.rawDirectory = root.resolve("raw");
         this.dataDirectory = root.resolve("data");
-        this.attachmentDirectory = root.resolve("attachments");
+        this.attachmentDirectory = root.resolve("files");
         this.htmlReportWriter = new HtmlReportWriter(root);
         try {
             Files.createDirectories(rawDirectory);
@@ -93,11 +102,13 @@ final class SnapshotStore {
     void writeSection(SectionData section, HttpResult rawResult) {
         int number = sequence.incrementAndGet();
         String contract = sanitize(section.contractId().isBlank() ? "global" : section.contractId());
-        String prefix = "%04d-%s".formatted(number, sanitize(section.section()));
-        Path contractDirectory = dataDirectory.resolve("contracts").resolve(contract);
-        writeJson(contractDirectory.resolve(prefix + ".json"), section);
-        writeRaw(prefix, contract, rawResult);
-        htmlReportWriter.section(section, prefix, contract, isHtml(rawResult));
+        String page = sanitize(section.section());
+        String period = periodDirectory(section.context().get("period"), section.capturedAt());
+        String prefix = "%04d".formatted(number);
+        Path pageDirectory = dataDirectory.resolve("pages").resolve(page).resolve(period).resolve(contract);
+        writeJson(pageDirectory.resolve(prefix + ".json"), section);
+        Path rawFile = writeRaw(page, period, prefix, contract, rawResult);
+        htmlReportWriter.section(section, rawFile == null ? null : root.relativize(rawFile).toString().replace('\\', '/'));
         pageCount++;
     }
 
@@ -110,13 +121,27 @@ final class SnapshotStore {
     }
 
     String writeAttachment(String sha256, byte[] bytes) {
-        Path file = attachmentDirectory.resolve(sha256 + ".pdf");
-        if (!Files.exists(file)) {
-            try {
-                Files.write(file, bytes);
-            } catch (IOException exception) {
-                throw new StorageException("Cannot write attachment", exception);
+        return writeAttachment("documents", "", sha256, bytes);
+    }
+
+    String writeAttachment(String section, String period, String id, byte[] bytes) {
+        Path directory = attachmentDirectory.resolve(sanitize(section))
+                .resolve(periodDirectory(period, clock.instant()));
+        String baseName = sanitize(id);
+        Path file = directory.resolve(baseName + ".pdf");
+        if (Files.exists(file)) {
+            String timestamp = FILE_TIMESTAMP_FORMAT.format(clock.instant());
+            file = directory.resolve(baseName + "_" + timestamp + ".pdf");
+            for (int suffix = 2; Files.exists(file); suffix++) {
+                file = directory.resolve(baseName + "_" + timestamp + "_" + suffix + ".pdf");
             }
+        }
+        ensureInsideSnapshot(file);
+        try {
+            Files.createDirectories(directory);
+            Files.write(file, bytes);
+        } catch (IOException exception) {
+            throw new StorageException("Cannot write attachment", exception);
         }
         return root.relativize(file).toString().replace('\\', '/');
     }
@@ -152,17 +177,19 @@ final class SnapshotStore {
         htmlReportWriter.write(manifest);
     }
 
-    private void writeRaw(String prefix, String contract, HttpResult result) {
+    private Path writeRaw(String page, String period, String prefix, String contract, HttpResult result) {
         if (!isHtml(result)) {
-            return;
+            return null;
         }
-        Path directory = rawDirectory.resolve("contracts").resolve(contract);
-        writeString(directory.resolve(prefix + ".html"), result.bodyAsString());
+        Path directory = rawDirectory.resolve(page).resolve(period).resolve(contract);
+        Path htmlFile = directory.resolve(prefix + ".html");
+        writeString(htmlFile, result.bodyAsString());
         Map<String, Object> metadata = Map.of(
                 "sourceUrl", result.uri().toString(),
                 "statusCode", result.statusCode(),
                 "contentType", result.contentType());
         writeJson(directory.resolve(prefix + ".meta.json"), metadata);
+        return htmlFile;
     }
 
     private boolean isHtml(HttpResult result) {
@@ -215,5 +242,23 @@ final class SnapshotStore {
         String sanitized = value.toLowerCase().replaceAll("[^a-z0-9._-]+", "-")
                 .replaceAll("^-+|-+$", "");
         return sanitized.isBlank() ? "unnamed" : sanitized;
+    }
+
+    private String periodDirectory(String period, Instant capturedAt) {
+        if (period != null && !period.isBlank()) {
+            Matcher matcher = YEAR.matcher(period);
+            List<String> years = new ArrayList<>();
+            while (matcher.find()) {
+                years.add(matcher.group(1));
+            }
+            if (!years.isEmpty() && years.stream().distinct().count() == 1) {
+                return years.getFirst();
+            }
+            String sanitized = sanitize(period);
+            if (!"unnamed".equals(sanitized)) {
+                return sanitized;
+            }
+        }
+        return DATE_DIRECTORY_FORMAT.format(capturedAt);
     }
 }

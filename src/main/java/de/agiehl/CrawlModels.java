@@ -15,7 +15,11 @@ record HttpResult(URI uri, int statusCode, String contentType, byte[] body) {
 record ContractReference(String id, String contractNumber, String description, URI selectionUri) {
 }
 
-record LinkData(String text, String href) {
+record LinkData(String text, String href, String storedFile) {
+
+    LinkData(String text, String href) {
+        this(text, href, null);
+    }
 }
 
 record CellData(String text, List<LinkData> links) {

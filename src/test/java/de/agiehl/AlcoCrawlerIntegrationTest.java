@@ -47,6 +47,12 @@ class AlcoCrawlerIntegrationTest {
         server.createContext("/einheit.php", exchange -> response(exchange, simplePage("Unit"), null));
         server.createContext("/infosend.php", exchange -> response(exchange, simplePage("Messages"), null));
         server.createContext("/kontoauszug.php", exchange -> {
+            if (exchange.getRequestURI().getRawQuery() != null
+                    && exchange.getRequestURI().getRawQuery().contains("KTNTYP=")) {
+                response(exchange, "<html><body><table><tr><th>Datum</th><th>Buchungstext</th></tr>"
+                        + "<tr><td>01.02.2026</td><td>Detail</td></tr></table></body></html>", null);
+                return;
+            }
             int year = 2025 + accountRequests.incrementAndGet();
             response(exchange,
                     "<html><body>Zeitraum: 01.01." + year + " bis: 31.12." + year
@@ -56,7 +62,9 @@ class AlcoCrawlerIntegrationTest {
         });
         server.createContext("/mda-salden.php", exchange -> response(exchange,
                 "<html><body>Angaben für den Zeitraum: 01.01.2026 - 31.12.2026"
+                        + "<table><tr><th>Bezeichnung</th><th>Saldo</th></tr><tr><td>"
                         + "<a href=\"kontoauszug.php?ID=11&amp;NAME=Wartung BHKW 70%&amp;KTNTYP=GV\">Konto</a>"
+                        + "</td><td>1,00</td></tr></table>"
                         + "</body></html>", null));
         server.createContext("/obj-abrechnung.php", exchange -> response(exchange,
                 "<html><body><select name=\"abrechnungszeit\"><option value=\"0\" selected>"
@@ -85,13 +93,11 @@ class AlcoCrawlerIntegrationTest {
         Path snapshot = crawler.crawl();
 
         assertThat(Files.readString(snapshot.resolve("manifest.json"))).contains("\"status\" : \"COMPLETE\"");
-        Path contractDirectory = snapshot.resolve("data/contracts/0");
-        assertThat(Files.walk(contractDirectory).filter(Files::isRegularFile).count())
-                .isGreaterThanOrEqualTo(6);
-        try (var files = Files.list(contractDirectory)) {
-            Path balances = files.filter(path -> path.getFileName().toString().endsWith("-balances.json"))
-                    .findFirst()
-                    .orElseThrow();
+        Path pagesDirectory = snapshot.resolve("data/pages");
+        assertThat(Files.walk(pagesDirectory).filter(Files::isRegularFile).count())
+                .isGreaterThanOrEqualTo(8);
+        try (var files = Files.list(pagesDirectory.resolve("mda-salden/2026/0"))) {
+            Path balances = files.findFirst().orElseThrow();
             assertThat(Files.readString(balances)).contains("Wartung%20BHKW%2070%25");
         }
         assertThat(accountRequests).hasValue(1);
@@ -118,7 +124,7 @@ class AlcoCrawlerIntegrationTest {
         assertThat(springOutput).isDirectoryContaining(path -> path.getFileName().toString()
                 .matches("\\d{4}-\\d{2}-\\d{2}_\\d{2}_\\d{2}(?:_\\d+)?"));
         assertThat(output).contains("ALCO backup finished: status=SUCCESS")
-                .contains("contractsCompleted=1, contractsDiscovered=1, pages=7")
+                .contains("contractsCompleted=1, contractsDiscovered=1, pages=8")
                 .contains("documentsDownloaded=0, documentsDiscovered=0, attachmentBytes=0, warnings=0");
     }
 

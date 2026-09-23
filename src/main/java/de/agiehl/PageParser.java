@@ -48,11 +48,11 @@ final class PageParser {
     SectionData parse(String section, String contractId, HttpResult result, Map<String, String> context) {
         Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
         List<TableData> tables = parseTables(document);
-        List<ItemData> items = parseItems(document);
+        List<ItemData> items = parseItems(document, section);
         List<LinkData> links = parseLinks(document, result.uri());
         List<DiscoveredDocument> documents = parseDocuments(document, result.uri(), section, contractId);
         return new SectionData(section, contractId, result.uri().toString(), clock.instant(), clean(document.title()),
-                clean(document.body().text()), Map.copyOf(context), parseFields(document), tables, items, links,
+                clean(document.body().text()), Map.copyOf(context), parseFields(document, section), tables, items, links,
                 documents);
     }
 
@@ -108,6 +108,18 @@ final class PageParser {
         return List.copyOf(links);
     }
 
+    List<URI> parseBalanceDetailLinks(HttpResult result) {
+        Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
+        Set<URI> links = new LinkedHashSet<>();
+        for (Element link : document.select("a[href*='kontoauszug.php'][href*='ID='][href*='NAME='][href*='KTNTYP=']")) {
+            URI uri = UriTools.resolve(result.uri(), link.attr("href"));
+            if (uri != null) {
+                links.add(uri);
+            }
+        }
+        return List.copyOf(links);
+    }
+
     List<URI> parseIndexedDetailLinks(HttpResult result, String endpoint, Pattern queryPattern) {
         Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
         Set<URI> links = new LinkedHashSet<>();
@@ -118,6 +130,18 @@ final class PageParser {
             }
             String query = uri.getRawQuery() == null ? "" : uri.getRawQuery();
             if (queryPattern.matcher(query).find()) {
+                links.add(uri);
+            }
+        }
+        return List.copyOf(links);
+    }
+
+    List<URI> parseTableLinks(HttpResult result, String endpoint) {
+        Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
+        Set<URI> links = new LinkedHashSet<>();
+        for (Element link : document.select("table a[href]")) {
+            URI uri = UriTools.resolve(result.uri(), link.attr("href"));
+            if (uri != null && uri.getPath().toLowerCase().endsWith(endpoint.toLowerCase())) {
                 links.add(uri);
             }
         }
@@ -160,6 +184,31 @@ final class PageParser {
             }
         }
         return Optional.empty();
+    }
+
+    Optional<Boolean> isBookingOverviewEmpty(HttpResult result) {
+        Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
+        Optional<Element> bookingTable = document.select("table").stream()
+                .filter(table -> table.select("th").stream()
+                        .map(Element::text)
+                        .map(PageParser::clean)
+                        .anyMatch(header -> header.equalsIgnoreCase("Buchungstext")))
+                .findFirst();
+        if (bookingTable.isEmpty() && !clean(document.body().text()).toLowerCase()
+                .contains("ihre buchungsübersicht")) {
+            return Optional.empty();
+        }
+        return bookingTable.map(table -> !hasDataRows(table)).or(() -> Optional.of(true));
+    }
+
+    boolean hasBalanceData(HttpResult result) {
+        Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
+        return document.select("table").stream()
+                .filter(table -> table.select("th").stream()
+                        .map(Element::text)
+                        .map(PageParser::clean)
+                        .anyMatch(header -> header.equalsIgnoreCase("Bezeichnung")))
+                .anyMatch(this::hasDataRows);
     }
 
     boolean hasFeature(HttpResult result, String pathFragment) {
@@ -239,7 +288,7 @@ final class PageParser {
         return List.copyOf(tables);
     }
 
-    private List<ItemData> parseItems(Document document) {
+    private List<ItemData> parseItems(Document document, String section) {
         List<ItemData> items = new ArrayList<>();
         for (Element button : document.select("button[data-target],button[aria-controls]")) {
             String targetId = button.hasAttr("data-target") ? button.attr("data-target") : button.attr("aria-controls");
@@ -249,10 +298,23 @@ final class PageParser {
                 items.add(new ItemData(clean(button.text()), clean(target.text()), parseLinks(target, document.location())));
             }
         }
+        if ("beschluss".equals(section)) {
+            for (Element heading : document.select("p")) {
+                Element content = heading.nextElementSibling();
+                if (content != null && "div".equals(content.normalName())
+                        && !clean(heading.text()).isBlank() && !clean(content.text()).isBlank()) {
+                    ItemData item = new ItemData(clean(heading.text()), clean(content.text()),
+                            parseLinks(content, document.location()));
+                    if (!items.contains(item)) {
+                        items.add(item);
+                    }
+                }
+            }
+        }
         return List.copyOf(items);
     }
 
-    private Map<String, String> parseFields(Document document) {
+    private Map<String, String> parseFields(Document document, String section) {
         Map<String, String> fields = new LinkedHashMap<>();
         for (Element label : document.select("label")) {
             Element control = label.attr("for").isBlank() ? null : document.getElementById(label.attr("for"));
@@ -273,7 +335,41 @@ final class PageParser {
                 fields.putIfAbsent(key.substring(0, key.length() - 1), value);
             }
         }
+        for (Element term : document.select("dt")) {
+            Element value = term.nextElementSibling();
+            if (value != null && "dd".equals(value.normalName()) && !clean(value.text()).isBlank()) {
+                fields.putIfAbsent(withoutTrailingColon(clean(term.text())), clean(value.text()));
+            }
+        }
+        if (section.startsWith("obj-lieferanten")) {
+            for (Element row : document.select("tr")) {
+                List<Element> cells = row.select("td");
+                if (cells.size() == 2 && !clean(cells.getFirst().text()).isBlank()
+                        && !clean(cells.getLast().text()).isBlank()) {
+                    fields.putIfAbsent(withoutTrailingColon(clean(cells.getFirst().text())),
+                            clean(cells.getLast().text()));
+                }
+            }
+        }
         return Map.copyOf(fields);
+    }
+
+    private boolean hasDataRows(Element table) {
+        return table.select("tr").stream().anyMatch(row -> {
+            List<Element> cells = row.select("td");
+            if (cells.isEmpty()) {
+                return false;
+            }
+            if (cells.size() == 1 && (cells.getFirst().hasAttr("colspan")
+                    || clean(cells.getFirst().text()).matches("(?i).*(keine|nicht vorhanden|leer).*"))) {
+                return false;
+            }
+            return cells.stream().map(Element::text).map(PageParser::clean).anyMatch(text -> !text.isBlank());
+        });
+    }
+
+    private String withoutTrailingColon(String value) {
+        return value.endsWith(":") ? value.substring(0, value.length() - 1).strip() : value;
     }
 
     private String followingText(Element element) {

@@ -39,8 +39,8 @@ final class HtmlReportWriter {
         contracts.addAll(values);
     }
 
-    void section(SectionData value, String prefix, String contractDirectory, boolean hasRawPage) {
-        sections.add(new StoredSection(value, prefix, contractDirectory, hasRawPage));
+    void section(SectionData value, String rawPath) {
+        sections.add(new StoredSection(value, rawPath));
     }
 
     void documents(List<DocumentData> values) {
@@ -289,9 +289,9 @@ final class HtmlReportWriter {
                     .append(formatText(section.pageText())).append("</p></details>");
         }
         result.append("<div class=\"source-actions\">");
-        if (stored.hasRawPage()) {
-            result.append("<a href=\"../../raw/contracts/").append(escapeAttribute(stored.contractDirectory()))
-                    .append('/').append(escapeAttribute(stored.prefix())).append(".html\" target=\"_blank\">Originalseite öffnen</a>");
+        if (stored.rawPath() != null) {
+            result.append("<a href=\"../../").append(escapeAttribute(stored.rawPath()))
+                    .append("\" target=\"_blank\">Originalseite öffnen</a>");
         }
         if (safeWebUrl(section.sourceUrl())) {
             result.append("<a href=\"").append(escapeAttribute(section.sourceUrl()))
@@ -323,7 +323,11 @@ final class HtmlReportWriter {
     private String links(List<LinkData> values) {
         StringBuilder result = new StringBuilder("<div class=\"data-links\">");
         for (LinkData link : values) {
-            if (safeWebUrl(link.href())) {
+            if (link.storedFile() != null) {
+                result.append("<a href=\"../../").append(escapeAttribute(link.storedFile()))
+                        .append("\" target=\"_blank\">")
+                        .append(escape(fallback(link.text(), "PDF öffnen"))).append("</a>");
+            } else if (safeWebUrl(link.href())) {
                 result.append("<a href=\"").append(escapeAttribute(link.href()))
                         .append("\" target=\"_blank\" rel=\"noreferrer\">")
                         .append(escape(fallback(link.text(), "Link öffnen"))).append(" ↗</a>");
@@ -429,18 +433,19 @@ final class HtmlReportWriter {
     private String sectionName(String value) {
         return switch (value) {
             case "home" -> "Startseite";
-            case "payment" -> "Zahlungsdaten";
-            case "unit" -> "Einheit";
-            case "messages" -> "Mitteilungen";
-            case "message-detail" -> "Mitteilungsdetail";
-            case "object-information" -> "Objektinformationen";
-            case "repairs" -> "Reparaturen";
-            case "resolutions" -> "Beschlüsse";
-            case "advisory-documents" -> "Beiratsdokumente";
-            case "suppliers" -> "Lieferanten";
-            case "supplier-detail" -> "Lieferantendetail";
-            case "account" -> "Kontoauszug";
-            case "balances" -> "Salden";
+            case "vertragszahlung" -> "Zahlungsdaten";
+            case "einheit" -> "Einheit";
+            case "infosend" -> "Mitteilungen";
+            case "infosend-detail" -> "Mitteilungsdetail";
+            case "mda-objekte" -> "Objektinformationen";
+            case "showinfo" -> "Reparaturen";
+            case "beschluss" -> "Beschlüsse";
+            case "doc-beirat" -> "Beiratsdokumente";
+            case "obj-lieferanten" -> "Lieferanten";
+            case "obj-lieferanten-detail" -> "Lieferantendetail";
+            case "kontoauszug" -> "Kontoauszug";
+            case "mda-salden" -> "Salden";
+            case "mda-salden-kontoauszug" -> "Salden-Kontoauszug";
             case "settlement-overview" -> "Abrechnungsübersicht";
             case "settlement-detail" -> "Abrechnungsdetail";
             default -> value;
@@ -453,6 +458,10 @@ final class HtmlReportWriter {
             case "granularity" -> "Auflösung";
             case "requestedPeriod" -> "Gewählter Modus";
             case "periodValue" -> "Zeitraum-ID";
+            case "supplierId" -> "Lieferanten-ID";
+            case "accountId" -> "Konto-ID";
+            case "accountName" -> "Bezeichnung";
+            case "accountType" -> "Kontotyp";
             default -> value;
         };
     }
@@ -535,7 +544,7 @@ final class HtmlReportWriter {
         return sanitized.isBlank() ? "unnamed" : sanitized;
     }
 
-    private record StoredSection(SectionData data, String prefix, String contractDirectory, boolean hasRawPage) {
+    private record StoredSection(SectionData data, String rawPath) {
     }
 
     private record SnapshotSummary(String directory, Instant startedAt, String status, String period, long contracts,

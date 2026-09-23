@@ -3,8 +3,9 @@
 [![Docker-Image bauen](https://github.com/jensGiehl/stv-alco-downloader/actions/workflows/docker-image.yml/badge.svg)](https://github.com/jensGiehl/stv-alco-downloader/actions/workflows/docker-image.yml)
 
 Der STV ALCO Downloader ist eine rein lesende Spring-Boot-Batchanwendung. Sie meldet sich bei
-`https://stv.alco-web.de` an, durchläuft alle zugänglichen Verträge und speichert strukturierte JSON-Daten,
-die ursprünglichen HTML-Seiten sowie verlinkte PDF-Dokumente in einem unveränderlichen Snapshot.
+`https://stv.alco-web.de` an und speichert strukturierte JSON-Daten, die ursprünglichen HTML-Seiten sowie
+verlinkte PDF-Dokumente in einem unveränderlichen Snapshot. Die Vertragskontoauszüge werden für alle
+zugänglichen Verträge geladen; alle anderen Bereiche stammen bewusst nur aus dem ersten Vertrag der Liste.
 
 Die Anwendung stellt keinen Webserver und keine grafische Oberfläche bereit. Pro Start wird genau ein Backup
 erstellt; danach beendet sich der Prozess mit einem Exit-Code.
@@ -57,14 +58,23 @@ java -jar target/stv-alco-downloader-1.0.0-SNAPSHOT.jar --logging.level.de.agieh
 
 ## Zeitraum-Modi
 
-- `all` lädt alle dynamisch angebotenen Abrechnungsjahre und navigiert Kontoauszüge und WEG-Salden bis zum
-  jeweils ältesten erreichbaren Zeitraum.
+- `all` lädt alle dynamisch angebotenen Abrechnungsjahre. Jeder Vertragskontoauszug wird rückwärts verfolgt,
+  bis die Tabelle „Ihre Buchungsübersicht“ leer ist. Die WEG-Salden des ersten Vertrags werden rückwärts
+  geladen, bis keine Daten mehr vorhanden sind oder sich der angezeigte Zeitraum nicht mehr ändert.
 - `current-year` lädt das aktuelle Jahr. Ist eine Jahresabrechnung noch nicht vorhanden, wird der neueste
   angebotene Jahresstand gesichert.
 - `current-month` filtert datierte Buchungen und deren Dokumente auf den aktuellen Monat. Übersichten, die
   ALCO-web nur jahresweise anbietet, werden vollständig mit der Kennzeichnung `YEAR` gespeichert.
 
-Stammdaten, Vertragsdaten und zeitunabhängige Dokumente werden in jedem Modus gesichert.
+Stammdaten, Vertragsdaten und zeitunabhängige Dokumente des ersten Vertrags werden in jedem Modus gesichert.
+
+Für jeden Saldenzeitraum wird die Übersicht strukturiert gespeichert. Anschließend wird jedes in der Spalte
+„Bezeichnung“ verlinkte Konto geöffnet und dessen Buchungstabelle gesichert. PDF-Links in Buchungstexten
+werden heruntergeladen; der relative lokale Pfad steht im jeweiligen JSON-Linkfeld als `storedFile`.
+
+Auf `mda_objekte.php` beziehungsweise `mda-objekte.php` werden alle `showpdf.php?ID=...`-Dokumente geladen.
+Beschlüsse werden als Überschrift/Text-Paare aus dem `<p>` und dem nachfolgenden `<div>` abgelegt. Bei den
+Lieferanten wird jeder Tabellenlink geöffnet und die danach angezeigten Stammdaten werden als Felder gesichert.
 
 ## Lokale Ausführung und IDE
 
@@ -105,16 +115,22 @@ backups/
     ├── data/
     │   ├── contracts.json
     │   ├── documents.json
-    │   └── contracts/<id>/*.json
+    │   └── pages/
+    │       ├── kontoauszug/<jahr>/<vertrag>/*.json
+    │       ├── mda-salden/<jahr>/<vertrag>/*.json
+    │       ├── mda-salden-kontoauszug/<jahr>/<vertrag>/*.json
+    │       └── <seite>/<datum>/<vertrag>/*.json
     ├── raw/
-    │   └── contracts/<id>/*.html
-    └── attachments/
-        └── <sha256>.pdf
+    │   └── <seite>/<jahr-oder-datum>/<vertrag>/*.html
+    └── files/
+        └── <seite>/<jahr-oder-datum>/<ID>.pdf
 ```
 
 `manifest.json` enthält den Status `RUNNING`, `COMPLETE` oder `FAILED`. Fehlgeschlagene Läufe bleiben zu
-Diagnosezwecken erhalten. PDFs werden anhand ihrer ALCO-Dokument-ID nicht mehrfach geladen und anhand der
-SHA-256-Prüfsumme nicht mehrfach gespeichert. Liefert ein Dokumentlink keinen PDF-Inhalt oder schlägt nur
+Diagnosezwecken erhalten. PDFs verwenden die ALCO-Dokument-ID als Dateinamen. Existiert im Zielordner bereits
+eine Datei mit derselben ID, wird ein Zeitstempel und bei Bedarf eine fortlaufende Nummer angehängt. Derselbe
+Dokumentlink wird innerhalb eines Laufs nur einmal geladen. `documents.json` enthält zusätzlich SHA-256,
+Dateigröße, lokalen Pfad und alle Fundstellen. Liefert ein Dokumentlink keinen PDF-Inhalt oder schlägt nur
 dieser einzelne Download trotz der HTTP-Wiederholungsversuche fehl, wird der Anhang mit einer Warnung im
 Manifest übersprungen und der Crawl mit den übrigen Dokumenten fortgesetzt. Sitzungs-, Anmelde- und
 Speicherfehler bleiben weiterhin fatal.
