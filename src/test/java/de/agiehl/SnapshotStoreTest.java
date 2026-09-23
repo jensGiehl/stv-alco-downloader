@@ -45,7 +45,7 @@ class SnapshotStoreTest {
         assertThat(Files.readString(store.root().resolve("index.html")))
                 .contains("Ihre Daten auf einen Blick", "71-10-1");
         assertThat(Files.readString(store.root().resolve("contracts/0/index.html")))
-                .contains("Contract", "Startseite", "Originalseite öffnen")
+                .contains("Contract", "Stammdaten", "Originalseite öffnen")
                 .doesNotContain("href=\"https://stv.alco-web.de", "Quelle im Portal");
         assertThat(Files.readString(store.root().resolve("documents.html"))).contains("Gespeicherte Dokumente");
         assertThat(Files.readString(temporaryDirectory.resolve("index.html")))

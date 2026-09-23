@@ -110,7 +110,8 @@ class RequestedCrawlWorkflowTest {
                 .contains("\"accountName\" : \"Vorschuss 2023\"")
                 .contains("\"storedFile\" : \"files/mda-salden-kontoauszug/2023/2023.pdf\"");
         assertThat(Files.readString(snapshot.resolve("contracts/0/index.html")))
-                .contains("../../files/mda-salden-kontoauszug/2023/2023.pdf")
+                .contains("Stammdaten", "Bezeichnung: Vorschuss 2023",
+                        "../../files/mda-salden-kontoauszug/2023/2023.pdf")
                 .doesNotContain("href=\"http://", "href=\"https://", "Quelle im Portal");
 
         Path resolution;

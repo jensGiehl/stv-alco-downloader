@@ -134,6 +134,33 @@ class PageParserTest {
     }
 
     @Test
+    void removesPortalNavigationAndInfoColumnsFromReportData() {
+        HttpResult result = html("https://stv.alco-web.de/homeV.php", """
+                <html><body>
+                <nav>Home <span>(current)</span> Kontoauszug Abrechnungsdaten Nachrichten</nav>
+                <div><span>Timeout</span><i>offline</i><i>person</i>
+                <a href="change-user.php">Benutzernamen ändern</a>
+                <a href="change-password.php">Passwort ändern</a>
+                <button>abmelden</button><i>exit_to_app</i></div>
+                <table><tr><th>Name</th><th>info</th><th>Saldo</th></tr>
+                <tr><td>Max Mustermann</td><td><a href="details.php">Details</a></td><td>125,00 EUR</td></tr>
+                </table></body></html>
+                """);
+
+        SectionData section = parser.parse("home", "0", result, Map.of());
+
+        assertThat(section.pageText())
+                .contains("Max Mustermann", "125,00 EUR")
+                .doesNotContain("Home", "Kontoauszug", "Abrechnungsdaten", "Nachrichten", "Timeout", "offline",
+                        "person", "Benutzernamen ändern", "Passwort ändern", "abmelden", "exit_to_app", "Details");
+        assertThat(section.tables()).singleElement().satisfies(table -> {
+            assertThat(table.headers()).containsExactly("Name", "Saldo");
+            assertThat(table.rows()).singleElement().satisfies(row ->
+                    assertThat(row).extracting(CellData::text).containsExactly("Max Mustermann", "125,00 EUR"));
+        });
+    }
+
+    @Test
     void encodesUnescapedPercentSignsWithoutChangingValidPercentEncoding() {
         URI resolved = UriTools.resolve(URI.create("https://stv.alco-web.de/mda-salden.php"),
                 "kontoauszug.php?ID=11&NAME=Wartung BHKW 70%&KTNTYP=GV");

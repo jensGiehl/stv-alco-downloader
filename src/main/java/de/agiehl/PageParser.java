@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -33,6 +34,9 @@ final class PageParser {
             "(?i)Zeitraum:\\s*(?:chevron_left\\s*)?(\\d{2}\\.\\d{2}\\.\\d{4})\\s*bis:\\s*(\\d{2}\\.\\d{2}\\.\\d{4})");
     private static final Pattern BALANCE_RANGE = Pattern.compile(
             "(?i)Angaben für den Zeitraum:\\s*(?:chevron_left\\s*)?(\\d{2}\\.\\d{2}\\.\\d{4})\\s*-\\s*(\\d{2}\\.\\d{2}\\.\\d{4})");
+    private static final Set<String> NAVIGATION_LABELS = Set.of(
+            "home", "home(current)", "kontoauszug", "abrechnungsdaten", "nachrichten", "timeout", "offline",
+            "person", "benutzernamenändern", "passwortändern", "abmelden", "exit_to_app");
 
     private final Clock clock;
 
@@ -46,7 +50,7 @@ final class PageParser {
     }
 
     SectionData parse(String section, String contractId, HttpResult result, Map<String, String> context) {
-        Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
+        Document document = reportDocument(Jsoup.parse(result.bodyAsString(), result.uri().toString()));
         boolean supplierDetail = "obj-lieferanten-detail".equals(section);
         Document structuredDocument = supplierDetail ? supplierAddressDocument(document) : document;
         Map<String, String> fields = parseFields(structuredDocument, section);
@@ -275,6 +279,63 @@ final class PageParser {
             tables.add(new TableData(headers, List.copyOf(rows)));
         }
         return List.copyOf(tables);
+    }
+
+    private Document reportDocument(Document source) {
+        Document document = source.clone();
+        document.select("nav,[role=navigation],.navbar,.navbar-nav,.nav-menu,.main-navigation,.sidebar-nav,.topnav,.sidenav,script,style,noscript")
+                .remove();
+        removeNavigationElements(document);
+        removeInfoColumns(document);
+        return document;
+    }
+
+    private void removeNavigationElements(Document document) {
+        for (Element element : List.copyOf(document.select("a,button,[role=button],i,span"))) {
+            if (!NAVIGATION_LABELS.contains(normalizeNavigationLabel(element.ownText()))) {
+                continue;
+            }
+            Element interactive = element.closest("a,button,[role=button]");
+            (interactive == null ? element : interactive).remove();
+        }
+    }
+
+    private void removeInfoColumns(Document document) {
+        for (Element table : document.select("table")) {
+            Element headerRow = table.selectFirst("tr:has(th)");
+            if (headerRow == null) {
+                continue;
+            }
+            List<Element> headerCells = cells(headerRow);
+            List<Integer> infoColumns = new ArrayList<>();
+            for (int index = 0; index < headerCells.size(); index++) {
+                if (clean(headerCells.get(index).text()).equalsIgnoreCase("info")) {
+                    infoColumns.add(index);
+                }
+            }
+            if (infoColumns.isEmpty()) {
+                continue;
+            }
+            for (Element row : table.select("tr")) {
+                List<Element> rowCells = cells(row);
+                for (int index = infoColumns.size() - 1; index >= 0; index--) {
+                    int column = infoColumns.get(index);
+                    if (column < rowCells.size()) {
+                        rowCells.get(column).remove();
+                    }
+                }
+            }
+        }
+    }
+
+    private List<Element> cells(Element row) {
+        return row.children().stream()
+                .filter(element -> "th".equals(element.normalName()) || "td".equals(element.normalName()))
+                .toList();
+    }
+
+    private String normalizeNavigationLabel(String value) {
+        return clean(value).toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
     }
 
     private List<ItemData> parseItems(Document document, String section) {

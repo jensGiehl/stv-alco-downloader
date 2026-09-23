@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +24,7 @@ final class HtmlReportWriter {
             .withZone(ZoneId.of("Europe/Berlin"));
     private static final String BOOTSTRAP_VERSION = "5.3.8";
     private static final String FAVICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23101c2c'/%3E%3Cpath d='M18 17h28v30H18z' fill='%231cba8b'/%3E%3Cpath d='M24 25h16M24 32h16M24 39h10' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E";
+    private static final Set<String> MASTER_DATA_SECTIONS = Set.of("home", "vertragszahlung", "einheit");
 
     private final Path root;
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
@@ -222,8 +224,9 @@ final class HtmlReportWriter {
     }
 
     private String contractPage(ContractReference contract, Map<String, Object> manifest) {
-        List<StoredSection> contractSections = sections.stream()
+        List<StoredSection> storedContractSections = sections.stream()
                 .filter(section -> section.data().contractId().equals(contract.id())).toList();
+        List<ReportSection> contractSections = reportSections(storedContractSections);
         long documentCount = documents.stream().flatMap(document -> document.sources().stream())
                 .filter(source -> source.contractId().equals(contract.id())).count();
         StringBuilder content = new StringBuilder();
@@ -243,7 +246,7 @@ final class HtmlReportWriter {
                     <div class="section-stack" data-filter-list="sections">
                 """.formatted(initials(contract.description(), contract.contractNumber()),
                 escape(contract.contractNumber()), escape(fallback(contract.description(), "Vertrag " + contract.id())),
-                contractSections.size(), documentCount));
+                storedContractSections.size(), documentCount));
         if (contractSections.isEmpty()) {
             content.append(emptyState("Keine Inhalte", "Für diesen Vertrag wurden keine Seiten gespeichert."));
         } else {
@@ -256,45 +259,105 @@ final class HtmlReportWriter {
         return document("%s – ALCO-Snapshot".formatted(contract.contractNumber()), "../..", content.toString());
     }
 
-    private String sectionCard(StoredSection stored, int number) {
-        SectionData section = stored.data();
-        String period = section.context().getOrDefault("period", "Ohne Zeitraum");
-        String search = section.title() + " " + section.section() + " " + period + " " + section.pageText();
+    private List<ReportSection> reportSections(List<StoredSection> storedSections) {
+        List<ReportSection> result = new ArrayList<>();
+        List<StoredSection> masterData = storedSections.stream()
+                .filter(section -> MASTER_DATA_SECTIONS.contains(section.data().section()))
+                .toList();
+        boolean masterDataAdded = false;
+        for (StoredSection stored : storedSections) {
+            if (MASTER_DATA_SECTIONS.contains(stored.data().section())) {
+                if (!masterDataAdded) {
+                    result.add(new ReportSection("stammdaten", "Stammdaten", masterData));
+                    masterDataAdded = true;
+                }
+                continue;
+            }
+            result.add(new ReportSection(stored.data().section(), sectionTitle(stored.data()), List.of(stored)));
+        }
+        return List.copyOf(result);
+    }
+
+    private String sectionCard(ReportSection reportSection, int number) {
+        String period = sectionPeriod(reportSection);
+        String search = reportSection.sources().stream()
+                .map(source -> source.data().title() + " " + source.data().section() + " "
+                        + source.data().pageText())
+                .reduce(reportSection.title() + " " + reportSection.section() + " " + period,
+                        (left, right) -> left + " " + right);
         StringBuilder result = new StringBuilder("""
                 <article class="section-card" data-filter-item data-search="%s">
                   <details%s>
                     <summary><span class="section-count">%02d</span><span class="flex-grow-1"><span class="section-label">%s</span><strong>%s</strong></span><span class="period-pill">%s</span><span class="chevron" aria-hidden="true"></span></summary>
                     <div class="section-body">
                 """.formatted(escapeAttribute(search), number == 1 ? " open" : "", number,
-                escape(sectionName(section.section())), escape(fallback(section.title(), sectionName(section.section()))),
-                escape(period)));
-        if (!section.context().isEmpty() || !section.fields().isEmpty()) {
+                escape(sectionName(reportSection.section())), escape(reportSection.title()), escape(period)));
+        if (reportSection.sources().stream()
+                .anyMatch(source -> !source.data().context().isEmpty() || !source.data().fields().isEmpty())) {
             result.append("<dl class=\"field-grid\">");
-            section.context().forEach((key, value) -> result.append(definition(key, value)));
-            section.fields().forEach((key, value) -> result.append(definition(key, value)));
+            reportSection.sources().forEach(source -> {
+                source.data().context().forEach((key, value) -> result.append(definition(key, value)));
+                source.data().fields().forEach((key, value) -> result.append(definition(key, value)));
+            });
             result.append("</dl>");
         }
-        for (TableData table : section.tables()) {
-            result.append(table(table));
+        for (StoredSection source : reportSection.sources()) {
+            for (TableData table : source.data().tables()) {
+                result.append(table(table));
+            }
+            for (ItemData item : source.data().items()) {
+                result.append("<section class=\"item-card\"><h3>").append(escape(item.heading())).append("</h3><p>")
+                        .append(formatText(item.content())).append("</p>").append(links(item.links())).append("</section>");
+            }
         }
-        for (ItemData item : section.items()) {
-            result.append("<section class=\"item-card\"><h3>").append(escape(item.heading())).append("</h3><p>")
-                    .append(formatText(item.content())).append("</p>").append(links(item.links())).append("</section>");
+        List<LinkData> sectionLinks = reportSection.sources().stream()
+                .flatMap(source -> source.data().links().stream())
+                .toList();
+        if (sectionLinks.stream().anyMatch(link -> link.storedFile() != null)) {
+            result.append("<section class=\"link-block\"><h3>Verweise</h3>").append(links(sectionLinks)).append("</section>");
         }
-        if (section.links().stream().anyMatch(link -> link.storedFile() != null)) {
-            result.append("<section class=\"link-block\"><h3>Verweise</h3>").append(links(section.links())).append("</section>");
-        }
-        if (!section.pageText().isBlank()) {
+        String pageText = reportSection.sources().stream()
+                .map(source -> source.data().pageText())
+                .filter(text -> !text.isBlank())
+                .distinct()
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+        if (!pageText.isBlank()) {
             result.append("<details class=\"page-text\"><summary>Vollständigen Seitentext anzeigen</summary><p>")
-                    .append(formatText(section.pageText())).append("</p></details>");
+                    .append(formatText(pageText)).append("</p></details>");
         }
         result.append("<div class=\"source-actions\">");
-        if (stored.rawPath() != null) {
-            result.append("<a href=\"../../").append(escapeAttribute(stored.rawPath()))
-                    .append("\" target=\"_blank\">Originalseite öffnen</a>");
+        List<StoredSection> rawSources = reportSection.sources().stream()
+                .filter(source -> source.rawPath() != null)
+                .toList();
+        for (int index = 0; index < rawSources.size(); index++) {
+            StoredSection source = rawSources.get(index);
+            String label = rawSources.size() == 1 ? "Originalseite öffnen" : "Originalseite %d öffnen".formatted(index + 1);
+            result.append("<a href=\"../../").append(escapeAttribute(source.rawPath()))
+                    .append("\" target=\"_blank\">").append(label).append("</a>");
         }
-        result.append("<span>Erfasst: ").append(formatDate(section.capturedAt())).append("</span></div></div></details></article>");
+        result.append("<span>Erfasst: ").append(formatDate(reportSection.sources().getFirst().data().capturedAt()))
+                .append("</span></div></div></details></article>");
         return result.toString();
+    }
+
+    private String sectionPeriod(ReportSection reportSection) {
+        List<String> periods = reportSection.sources().stream()
+                .map(source -> source.data().context().get("period"))
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .toList();
+        return periods.size() == 1 ? periods.getFirst() : "Ohne Zeitraum";
+    }
+
+    private String sectionTitle(SectionData section) {
+        if ("mda-salden-kontoauszug".equals(section.section())) {
+            String accountName = section.context().get("accountName");
+            if (accountName != null && !accountName.isBlank()) {
+                return "Bezeichnung: " + accountName;
+            }
+        }
+        return fallback(section.title(), sectionName(section.section()));
     }
 
     private String table(TableData table) {
@@ -424,9 +487,9 @@ final class HtmlReportWriter {
 
     private String sectionName(String value) {
         return switch (value) {
-            case "home" -> "Startseite";
-            case "vertragszahlung" -> "Zahlungsdaten";
-            case "einheit" -> "Einheit";
+            case "stammdaten", "home" -> "Stammdaten";
+            case "vertragszahlung" -> "Zahlungsinfo";
+            case "einheit" -> "Wohnung/Einheit";
             case "infosend" -> "Mitteilungen";
             case "infosend-detail" -> "Mitteilungsdetail";
             case "mda-objekte" -> "Objektinformationen";
@@ -529,6 +592,9 @@ final class HtmlReportWriter {
     }
 
     private record StoredSection(SectionData data, String rawPath) {
+    }
+
+    private record ReportSection(String section, String title, List<StoredSection> sources) {
     }
 
     private record SnapshotSummary(String directory, Instant startedAt, String status, String period, long contracts,
