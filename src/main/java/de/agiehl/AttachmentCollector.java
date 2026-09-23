@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -39,25 +40,55 @@ final class AttachmentCollector {
             index++;
             LOGGER.info("Downloading document {}/{}: id='{}', title='{}'", index, documents.size(), pending.id,
                     pending.title);
-            HttpResult result = client.get(URI.create(pending.href));
-            byte[] bytes = result.body();
-            if (!isPdf(bytes, result.contentType())) {
-                throw new CrawlerException("Attachment " + pending.id + " did not return a PDF");
+            try {
+                download(pending, client, store).ifPresent(downloaded::add);
+            } catch (SessionExpiredException | AuthenticationException | StorageException exception) {
+                throw exception;
+            } catch (CrawlerException exception) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw exception;
+                }
+                skip(pending, store, exception.getMessage());
             }
-            String sha256 = sha256(bytes);
-            String storedFile = store.writeAttachment(sha256, bytes);
-            String contentType = result.contentType().isBlank() ? "application/pdf"
-                    : result.contentType().split(";", 2)[0].trim();
-            downloaded.add(new DocumentData(pending.id, pending.title, pending.href, contentType, bytes.length,
-                    sha256, storedFile, List.copyOf(pending.sources)));
-            LOGGER.info("Stored document {}/{}: id='{}', bytes={}", index, documents.size(), pending.id,
-                    bytes.length);
         }
         return List.copyOf(downloaded);
     }
 
     int size() {
         return documents.size();
+    }
+
+    private Optional<DocumentData> download(PendingDocument pending, AlcoHttpClient client, SnapshotStore store) {
+        HttpResult result = client.get(URI.create(pending.href));
+        byte[] bytes = result.body();
+        if (!isPdf(bytes, result.contentType())) {
+            skip(pending, store, "response is not a PDF (content type: " + contentType(result) + ")");
+            return Optional.empty();
+        }
+        String sha256 = sha256(bytes);
+        String storedFile = store.writeAttachment(sha256, bytes);
+        String contentType = normalizedContentType(result);
+        LOGGER.info("Stored document: id='{}', bytes={}", pending.id, bytes.length);
+        return Optional.of(new DocumentData(pending.id, pending.title, pending.href, contentType,
+                bytes.length, sha256, storedFile, List.copyOf(pending.sources)));
+    }
+
+    private void skip(PendingDocument pending, SnapshotStore store, String reason) {
+        String warning = "Attachment " + pending.id + " was skipped: " + safeReason(reason);
+        store.addWarning(warning);
+        LOGGER.warn("{}", warning);
+    }
+
+    private String normalizedContentType(HttpResult result) {
+        return result.contentType().isBlank() ? "application/pdf" : result.contentType().split(";", 2)[0].trim();
+    }
+
+    private String contentType(HttpResult result) {
+        return result.contentType().isBlank() ? "unknown" : result.contentType().split(";", 2)[0].trim();
+    }
+
+    private String safeReason(String reason) {
+        return reason == null || reason.isBlank() ? "download failed" : reason;
     }
 
     private boolean isPdf(byte[] bytes, String contentType) {

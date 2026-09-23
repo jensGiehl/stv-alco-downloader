@@ -1,7 +1,6 @@
 package de.agiehl;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -48,6 +47,10 @@ class AttachmentCollectorTest {
             exchange.close();
         });
         server.createContext("/invalid.pdf", exchange -> html(exchange, "<html>Login</html>", null));
+        server.createContext("/missing.pdf", exchange -> {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
         server.start();
         properties = new AlcoProperties();
         properties.setBaseUrl(URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
@@ -83,15 +86,22 @@ class AttachmentCollectorTest {
     }
 
     @Test
-    void rejectsHtmlMasqueradingAsAttachment() {
+    void skipsNonPdfAndFailedDownloadsAndContinuesWithRemainingDocuments() {
         AttachmentCollector collector = new AttachmentCollector();
-        String href = client.resolve("/invalid.pdf").toString();
+        String validHref = client.resolve("/showpdf.php?ID=43").toString();
         collector.register(section(List.of(
-                new DiscoveredDocument("invalid", "Invalid", href, "home", "source", "0"))));
+                new DiscoveredDocument("invalid", "Invalid", client.resolve("/invalid.pdf").toString(), "home",
+                        "source", "0"),
+                new DiscoveredDocument("missing", "Missing", client.resolve("/missing.pdf").toString(), "home",
+                        "source", "0"),
+                new DiscoveredDocument("43", "Valid", validHref, "home", "source", "0"))));
+        SnapshotStore store = store();
 
-        assertThatThrownBy(() -> collector.downloadAll(client, store()))
-                .isInstanceOf(CrawlerException.class)
-                .hasMessageContaining("did not return a PDF");
+        List<DocumentData> documents = collector.downloadAll(client, store);
+
+        assertThat(documents).singleElement().extracting(DocumentData::id).isEqualTo("43");
+        assertThat(pdfRequests).hasValue(1);
+        assertThat(store.warningCount()).isEqualTo(2);
     }
 
     private SectionData section(List<DiscoveredDocument> documents) {

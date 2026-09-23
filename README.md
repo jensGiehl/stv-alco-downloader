@@ -112,7 +112,10 @@ backups/
 
 `manifest.json` enthält den Status `RUNNING`, `COMPLETE` oder `FAILED`. Fehlgeschlagene Läufe bleiben zu
 Diagnosezwecken erhalten. PDFs werden anhand ihrer ALCO-Dokument-ID nicht mehrfach geladen und anhand der
-SHA-256-Prüfsumme nicht mehrfach gespeichert.
+SHA-256-Prüfsumme nicht mehrfach gespeichert. Liefert ein Dokumentlink keinen PDF-Inhalt oder schlägt nur
+dieser einzelne Download trotz der HTTP-Wiederholungsversuche fehl, wird der Anhang mit einer Warnung im
+Manifest übersprungen und der Crawl mit den übrigen Dokumenten fortgesetzt. Sitzungs-, Anmelde- und
+Speicherfehler bleiben weiterhin fatal.
 
 Die `index.html` im Root des Backup-Ordners zeigt alle vorhandenen Sicherungsläufe. Jeder Snapshot besitzt
 zusätzlich eine eigene `index.html`. Von dort führen Links zu den Vertragsdetails, Tabellen, Seitentexten,
