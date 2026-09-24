@@ -144,9 +144,9 @@ lokal gespeicherten Originalseiten und zur zentralen Dokumentübersicht. Der HTM
 zur STV-Website; alle anklickbaren Seiten- und PDF-Verweise zeigen ausschließlich auf Dateien innerhalb des
 Snapshots. Stammdaten, Zahlungsinfo und Wohnung/Einheit erscheinen im Report gemeinsam als „Stammdaten“.
 Portalnavigation und „info“-Tabellenspalten werden in der aufbereiteten Ansicht ausgeblendet. Beim
-Salden-Kontoauszug steht die Kontobezeichnung direkt in der Abschnittsüberschrift. Die mitgelieferten
-Bootstrap-Assets liegen vollständig im Backup; zum Lesen ist weder ein Webserver noch eine Internetverbindung
-erforderlich.
+Salden-Kontoauszug steht die Kontobezeichnung direkt in der Abschnittsüberschrift. Abrechnungsdetails
+verwenden dort den ersten Buchungstext. Die mitgelieferten Bootstrap-Assets liegen
+vollständig im Backup; zum Lesen ist weder ein Webserver noch eine Internetverbindung erforderlich.
 
 Die Dateien enthalten personenbezogene und finanzielle Daten. Der Backup-Ordner muss entsprechend geschützt
 und in eine vorhandene Sicherungsstrategie aufgenommen werden.

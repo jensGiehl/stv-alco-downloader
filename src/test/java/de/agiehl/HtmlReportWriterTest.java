@@ -39,6 +39,11 @@ class HtmlReportWriterTest {
         writer.section(section("obj-lieferanten-detail", "ALCO-web", Map.of(),
                         Map.of("supplierId", "9", "supplierName", "DEKRA Automobil GmbH")),
                 "raw/lieferant.html");
+        writer.section(section("settlement-detail", "ALCO-web", Map.of(), Map.of(), List.of(
+                        new TableData(List.of("Datum", "Buchungstext", "Betrag"), List.of(
+                                List.of(cell("01.01.2026"), cell("Hausmeisterdienst Januar"), cell("100,00 EUR")),
+                                List.of(cell("01.02.2026"), cell("Hausmeisterdienst Februar"), cell("100,00 EUR")))))),
+                "raw/abrechnungsdetail.html");
         writer.documents(List.of());
 
         writer.write(Map.of(
@@ -46,11 +51,11 @@ class HtmlReportWriterTest {
                 "startedAt", CAPTURED_AT,
                 "period", "ALL",
                 "contracts", 1,
-                "pages", 5,
+                "pages", 6,
                 "documents", 0));
 
         var report = Jsoup.parse(Files.readString(snapshot.resolve("contracts/0/index.html")));
-        assertThat(report.select("article.section-card")).hasSize(3);
+        assertThat(report.select("article.section-card")).hasSize(4);
         Element masterData = report.select("article.section-card").getFirst();
         assertThat(masterData.selectFirst(".section-label").text()).isEqualTo("Stammdaten");
         assertThat(masterData.text()).contains("Max Mustermann", "DE12 3456", "WE 7")
@@ -66,12 +71,26 @@ class HtmlReportWriterTest {
         assertThat(supplier.selectFirst("summary").text())
                 .contains("Lieferantendetail", "DEKRA Automobil GmbH")
                 .doesNotContain("ALCO-web");
+
+        Element settlementDetail = report.select("article.section-card").get(3);
+        assertThat(settlementDetail.selectFirst("summary").text())
+                .contains("Abrechnungsdetail", "Hausmeisterdienst Januar")
+                .doesNotContain("ALCO-web", "Hausmeisterdienst Februar");
     }
 
     private SectionData section(String section, String title, Map<String, String> fields,
                                 Map<String, String> context) {
+        return section(section, title, fields, context, List.of());
+    }
+
+    private SectionData section(String section, String title, Map<String, String> fields,
+                                Map<String, String> context, List<TableData> tables) {
         return new SectionData(section, "0", "https://stv.alco-web.de/" + section + ".php", CAPTURED_AT,
                 title, fields.values().stream().reduce((left, right) -> left + " " + right).orElse(""), context,
-                fields, List.of(), List.of(), List.of(), List.of());
+                fields, tables, List.of(), List.of(), List.of());
+    }
+
+    private CellData cell(String text) {
+        return new CellData(text, List.of());
     }
 }

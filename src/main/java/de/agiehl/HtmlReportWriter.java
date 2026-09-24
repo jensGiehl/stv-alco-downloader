@@ -367,7 +367,34 @@ final class HtmlReportWriter {
                 return "Bezeichnung: " + accountName;
             }
         }
+        if ("settlement-detail".equals(section.section())) {
+            String bookingText = firstTableValue(section.tables(), "Buchungstext");
+            if (!bookingText.isBlank()) {
+                return bookingText;
+            }
+        }
         return fallback(section.title(), sectionName(section.section()));
+    }
+
+    private String firstTableValue(List<TableData> tables, String columnName) {
+        for (TableData table : tables) {
+            int column = -1;
+            for (int index = 0; index < table.headers().size(); index++) {
+                if (columnName.equalsIgnoreCase(table.headers().get(index))) {
+                    column = index;
+                    break;
+                }
+            }
+            if (column < 0) {
+                continue;
+            }
+            for (List<CellData> row : table.rows()) {
+                if (column < row.size() && !row.get(column).text().isBlank()) {
+                    return row.get(column).text();
+                }
+            }
+        }
+        return "";
     }
 
     private String table(TableData table) {
