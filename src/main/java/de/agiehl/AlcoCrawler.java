@@ -120,11 +120,11 @@ final class AlcoCrawler {
             LOGGER.info("Optional section 'suppliers' is available for contract '{}'", contract.contractNumber());
             HttpResult suppliers = crawlStaticPage("obj-lieferanten", "/obj-lieferanten.php", contract, store,
                     attachments);
-            List<URI> supplierDetails = parser.parseTableLinks(suppliers, "obj-lieferanten.php");
+            List<SupplierReference> supplierDetails = parser.parseSupplierReferences(suppliers);
             LOGGER.info("Found {} supplier detail page(s) for contract '{}'", supplierDetails.size(),
                     contract.contractNumber());
-            for (URI detail : supplierDetails) {
-                HttpResult supplier = client.get(detail);
+            for (SupplierReference detail : supplierDetails) {
+                HttpResult supplier = client.get(detail.uri());
                 processPage("obj-lieferanten-detail", contract.id(), supplier, supplierContext(detail), store,
                         attachments, false);
             }
@@ -297,10 +297,13 @@ final class AlcoCrawler {
                 .orElseGet(() -> "content:" + Integer.toUnsignedString(result.bodyAsString().hashCode()));
     }
 
-    private Map<String, String> supplierContext(URI uri) {
-        Map<String, String> parameters = queryParameters(uri);
+    private Map<String, String> supplierContext(SupplierReference supplier) {
+        Map<String, String> parameters = queryParameters(supplier.uri());
         Map<String, String> context = new LinkedHashMap<>();
         Optional.ofNullable(parameters.get("id")).ifPresent(value -> context.put("supplierId", value));
+        if (!supplier.name().isBlank()) {
+            context.put("supplierName", supplier.name());
+        }
         return Map.copyOf(context);
     }
 

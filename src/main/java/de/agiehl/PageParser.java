@@ -130,16 +130,16 @@ final class PageParser {
         return List.copyOf(links);
     }
 
-    List<URI> parseTableLinks(HttpResult result, String endpoint) {
+    List<SupplierReference> parseSupplierReferences(HttpResult result) {
         Document document = Jsoup.parse(result.bodyAsString(), result.uri().toString());
-        Set<URI> links = new LinkedHashSet<>();
+        Map<URI, SupplierReference> references = new LinkedHashMap<>();
         for (Element link : document.select("table a[href]")) {
             URI uri = UriTools.resolve(result.uri(), link.attr("href"));
-            if (uri != null && uri.getPath().toLowerCase().endsWith(endpoint.toLowerCase())) {
-                links.add(uri);
+            if (uri != null && uri.getPath().toLowerCase().endsWith("obj-lieferanten.php")) {
+                references.putIfAbsent(uri, new SupplierReference(uri, supplierName(link)));
             }
         }
-        return List.copyOf(links);
+        return List.copyOf(references.values());
     }
 
     Optional<String> parsePeriodRange(HttpResult result) {
@@ -428,6 +428,25 @@ final class PageParser {
                 .forEach(Element::remove);
         copy.select("nav,footer,script,style").remove();
         return copy;
+    }
+
+    private String supplierName(Element link) {
+        Element row = link.closest("tr");
+        Element table = link.closest("table");
+        if (row != null && table != null) {
+            List<Element> values = cells(row);
+            Element headerRow = table.selectFirst("tr:has(th)");
+            if (headerRow != null) {
+                List<Element> headers = cells(headerRow);
+                for (int index = 0; index < Math.min(headers.size(), values.size()); index++) {
+                    String header = clean(headers.get(index).text()).toLowerCase(Locale.ROOT);
+                    if (Set.of("firma", "firmenname", "name", "lieferant", "unternehmen").contains(header)) {
+                        return clean(values.get(index).text());
+                    }
+                }
+            }
+        }
+        return clean(link.text());
     }
 
     private String supplierPageText(Document document, Map<String, String> fields) {

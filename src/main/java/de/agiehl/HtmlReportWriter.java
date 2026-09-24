@@ -356,6 +356,10 @@ final class HtmlReportWriter {
             if (supplierName != null && !supplierName.isBlank()) {
                 return supplierName;
             }
+            supplierName = section.context().get("supplierName");
+            if (supplierName != null && !supplierName.isBlank()) {
+                return supplierName;
+            }
         }
         if ("mda-salden-kontoauszug".equals(section.section())) {
             String accountName = section.context().get("accountName");
@@ -520,6 +524,7 @@ final class HtmlReportWriter {
             case "requestedPeriod" -> "Gewählter Modus";
             case "periodValue" -> "Zeitraum-ID";
             case "supplierId" -> "Lieferanten-ID";
+            case "supplierName" -> "Lieferant";
             case "accountId" -> "Konto-ID";
             case "accountName" -> "Bezeichnung";
             case "accountType" -> "Kontotyp";

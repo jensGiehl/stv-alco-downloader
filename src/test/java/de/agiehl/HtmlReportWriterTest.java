@@ -36,8 +36,8 @@ class HtmlReportWriterTest {
         writer.section(section("mda-salden-kontoauszug", "ALCO-web", Map.of(),
                         Map.of("period", "01.01.2026 - 31.12.2026", "accountName", "Vorschuss")),
                 "raw/salden.html");
-        writer.section(section("obj-lieferanten-detail", "ALCO-web", Map.of("Firma", "Beispiel GmbH"),
-                        Map.of("supplierId", "9")),
+        writer.section(section("obj-lieferanten-detail", "ALCO-web", Map.of(),
+                        Map.of("supplierId", "9", "supplierName", "DEKRA Automobil GmbH")),
                 "raw/lieferant.html");
         writer.documents(List.of());
 
@@ -64,7 +64,7 @@ class HtmlReportWriterTest {
 
         Element supplier = report.select("article.section-card").get(2);
         assertThat(supplier.selectFirst("summary").text())
-                .contains("Lieferantendetail", "Beispiel GmbH")
+                .contains("Lieferantendetail", "DEKRA Automobil GmbH")
                 .doesNotContain("ALCO-web");
     }
 

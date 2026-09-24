@@ -75,6 +75,7 @@ werden heruntergeladen; der relative lokale Pfad steht im jeweiligen JSON-Linkfe
 Auf `mda_objekte.php` beziehungsweise `mda-objekte.php` werden alle `showpdf.php?ID=...`-Dokumente geladen.
 Beschlüsse werden als Überschrift/Text-Paare aus dem `<p>` und dem nachfolgenden `<div>` abgelegt. Bei den
 Lieferanten wird jeder Tabellenlink geöffnet und die danach angezeigten Stammdaten werden als Felder gesichert.
+Der Name aus der Lieferantenübersicht wird dabei auch als Titel des Lieferantendetails im HTML-Report verwendet.
 Dabei wird nur der obere Adress-/Stammdatenbereich übernommen; Links und die wiederholte Lieferantentabelle der
 Detailseite werden ignoriert. `infosend.php` und ihre Detailseiten gehören nicht zum Sicherungsumfang.
 

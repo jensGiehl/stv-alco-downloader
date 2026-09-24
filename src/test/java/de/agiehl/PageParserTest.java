@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -147,6 +148,24 @@ class PageParserTest {
         assertThat(section.tables()).isEmpty();
         assertThat(section.links()).isEmpty();
         assertThat(section.pageText()).doesNotContain("Anderer Lieferant", "obj-lieferanten.php");
+    }
+
+    @Test
+    void parsesSupplierNamesFromTheOverview() {
+        HttpResult result = html("https://stv.alco-web.de/obj-lieferanten.php", """
+                <html><body><table><tr><th>Firma</th><th>Info</th></tr>
+                <tr><td>DEKRA Automobil GmbH</td>
+                <td><a href="obj-lieferanten.php?aktion=anzeigen&amp;id=9">info</a></td></tr>
+                </table></body></html>
+                """);
+
+        List<SupplierReference> references = parser.parseSupplierReferences(result);
+
+        assertThat(references).singleElement().satisfies(reference -> {
+            assertThat(reference.uri()).hasToString(
+                    "https://stv.alco-web.de/obj-lieferanten.php?aktion=anzeigen&id=9");
+            assertThat(reference.name()).isEqualTo("DEKRA Automobil GmbH");
+        });
     }
 
     @Test
