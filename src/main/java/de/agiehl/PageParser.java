@@ -36,7 +36,8 @@ final class PageParser {
             "(?i)Angaben für den Zeitraum:\\s*(?:chevron_left\\s*)?(\\d{2}\\.\\d{2}\\.\\d{4})\\s*-\\s*(\\d{2}\\.\\d{2}\\.\\d{4})");
     private static final Set<String> NAVIGATION_LABELS = Set.of(
             "home", "home(current)", "kontoauszug", "abrechnungsdaten", "nachrichten", "timeout", "offline",
-            "person", "benutzernamenändern", "passwortändern", "abmelden", "exit_to_app");
+            "person", "benutzernamenändern", "passwortändern", "abmelden", "exit_to_app", "chevron_left",
+            "chevron_right");
 
     private final Clock clock;
 

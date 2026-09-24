@@ -69,6 +69,22 @@ class PageParserTest {
     }
 
     @Test
+    void removesPeriodNavigationIconsFromReportData() {
+        HttpResult result = html("https://stv.alco-web.de/kontoauszug.php", """
+                <html><body><strong>Zeitraum:</strong>
+                <a href="?id=zurueck"><i>chevron_left</i></a>
+                01.01.2026 bis: 31.12.2026
+                <a href="?id=vor"><i>chevron_right</i></a>
+                </body></html>
+                """);
+
+        SectionData section = parser.parse("kontoauszug", "0", result, Map.of());
+
+        assertThat(section.fields()).containsEntry("Zeitraum", "01.01.2026 bis: 31.12.2026");
+        assertThat(section.pageText()).doesNotContain("chevron_left", "chevron_right");
+    }
+
+    @Test
     void preservesQueryLinksWhenResolvingRelativeUris() {
         URI resolved = UriTools.resolve(URI.create("https://stv.alco-web.de/homeV.php"),
                 "?aktion=anzeigen&id=2");
