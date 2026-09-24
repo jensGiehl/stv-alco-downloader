@@ -22,7 +22,7 @@ class HtmlReportWriterTest {
     Path temporaryDirectory;
 
     @Test
-    void combinesMasterDataAndShowsBalanceAccountNameInTheSummary() throws Exception {
+    void usesMeaningfulSectionTitlesInTheSummary() throws Exception {
         Path snapshot = temporaryDirectory.resolve("snapshot");
         HtmlReportWriter writer = new HtmlReportWriter(snapshot);
         writer.contracts(List.of(new ContractReference("0", "71-10-1", "Musterwohnung",
@@ -36,6 +36,9 @@ class HtmlReportWriterTest {
         writer.section(section("mda-salden-kontoauszug", "ALCO-web", Map.of(),
                         Map.of("period", "01.01.2026 - 31.12.2026", "accountName", "Vorschuss")),
                 "raw/salden.html");
+        writer.section(section("obj-lieferanten-detail", "ALCO-web", Map.of("Firma", "Beispiel GmbH"),
+                        Map.of("supplierId", "9")),
+                "raw/lieferant.html");
         writer.documents(List.of());
 
         writer.write(Map.of(
@@ -43,11 +46,11 @@ class HtmlReportWriterTest {
                 "startedAt", CAPTURED_AT,
                 "period", "ALL",
                 "contracts", 1,
-                "pages", 4,
+                "pages", 5,
                 "documents", 0));
 
         var report = Jsoup.parse(Files.readString(snapshot.resolve("contracts/0/index.html")));
-        assertThat(report.select("article.section-card")).hasSize(2);
+        assertThat(report.select("article.section-card")).hasSize(3);
         Element masterData = report.select("article.section-card").getFirst();
         assertThat(masterData.selectFirst(".section-label").text()).isEqualTo("Stammdaten");
         assertThat(masterData.text()).contains("Max Mustermann", "DE12 3456", "WE 7")
@@ -58,6 +61,11 @@ class HtmlReportWriterTest {
         assertThat(balanceStatement.selectFirst("summary").text())
                 .contains("Salden-Kontoauszug", "Bezeichnung: Vorschuss");
         assertThat(balanceStatement.text()).contains("Bezeichnung Vorschuss");
+
+        Element supplier = report.select("article.section-card").get(2);
+        assertThat(supplier.selectFirst("summary").text())
+                .contains("Lieferantendetail", "Beispiel GmbH")
+                .doesNotContain("ALCO-web");
     }
 
     private SectionData section(String section, String title, Map<String, String> fields,

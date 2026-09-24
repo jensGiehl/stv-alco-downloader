@@ -351,6 +351,12 @@ final class HtmlReportWriter {
     }
 
     private String sectionTitle(SectionData section) {
+        if ("obj-lieferanten-detail".equals(section.section())) {
+            String supplierName = section.fields().get("Firma");
+            if (supplierName != null && !supplierName.isBlank()) {
+                return supplierName;
+            }
+        }
         if ("mda-salden-kontoauszug".equals(section.section())) {
             String accountName = section.context().get("accountName");
             if (accountName != null && !accountName.isBlank()) {
