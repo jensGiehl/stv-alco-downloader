@@ -39,7 +39,6 @@ final class SnapshotStore {
     private final Path rawDirectory;
     private final Path dataDirectory;
     private final Path attachmentDirectory;
-    private final HtmlReportWriter htmlReportWriter;
     private final AtomicInteger sequence = new AtomicInteger();
     private final Map<String, Object> manifest = new LinkedHashMap<>();
     private final List<String> warnings = new ArrayList<>();
@@ -56,7 +55,6 @@ final class SnapshotStore {
         this.rawDirectory = root.resolve("raw");
         this.dataDirectory = root.resolve("data");
         this.attachmentDirectory = root.resolve("files");
-        this.htmlReportWriter = new HtmlReportWriter(root);
         try {
             Files.createDirectories(rawDirectory);
             Files.createDirectories(dataDirectory);
@@ -94,7 +92,6 @@ final class SnapshotStore {
 
     void writeContracts(List<ContractReference> contracts) {
         writeJson(dataDirectory.resolve("contracts.json"), contracts);
-        htmlReportWriter.contracts(contracts);
         manifest.put("contracts", contracts.size());
         writeManifest();
     }
@@ -107,14 +104,12 @@ final class SnapshotStore {
         String prefix = "%04d".formatted(number);
         Path pageDirectory = dataDirectory.resolve("pages").resolve(page).resolve(period).resolve(contract);
         writeJson(pageDirectory.resolve(prefix + ".json"), section);
-        Path rawFile = writeRaw(page, period, prefix, contract, rawResult);
-        htmlReportWriter.section(section, rawFile == null ? null : root.relativize(rawFile).toString().replace('\\', '/'));
+        writeRaw(page, period, prefix, contract, rawResult);
         pageCount++;
     }
 
     void writeDocuments(List<DocumentData> documents) {
         writeJson(dataDirectory.resolve("documents.json"), documents);
-        htmlReportWriter.documents(documents);
         manifest.put("documents", documents.size());
         manifest.put("attachments", documents.stream().map(DocumentData::storedFile).distinct().count());
         writeManifest();
@@ -164,7 +159,7 @@ final class SnapshotStore {
         manifest.put("pages", pageCount);
         manifest.put("warnings", List.copyOf(warnings));
         writeManifest();
-        htmlReportWriter.write(manifest);
+        new HtmlReportWriter(root).write();
     }
 
     void fail(Instant finishedAt, String reason) {
@@ -174,12 +169,12 @@ final class SnapshotStore {
         manifest.put("warnings", List.copyOf(warnings));
         manifest.put("failure", reason);
         writeManifest();
-        htmlReportWriter.write(manifest);
+        new HtmlReportWriter(root).write();
     }
 
-    private Path writeRaw(String page, String period, String prefix, String contract, HttpResult result) {
+    private void writeRaw(String page, String period, String prefix, String contract, HttpResult result) {
         if (!isHtml(result)) {
-            return null;
+            return;
         }
         Path directory = rawDirectory.resolve(page).resolve(period).resolve(contract);
         Path htmlFile = directory.resolve(prefix + ".html");
@@ -189,7 +184,6 @@ final class SnapshotStore {
                 "statusCode", result.statusCode(),
                 "contentType", result.contentType());
         writeJson(directory.resolve(prefix + ".meta.json"), metadata);
-        return htmlFile;
     }
 
     private boolean isHtml(HttpResult result) {

@@ -1,6 +1,7 @@
 package de.agiehl;
 
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 
@@ -13,6 +14,7 @@ public class AlcoProperties {
     private String username = "";
     private String password = "";
     private Path outputDir = Path.of("./backups");
+    private Path reportSource;
     private CrawlPeriod period = CrawlPeriod.ALL;
     private Duration requestDelay = Duration.ofMillis(500);
 
@@ -35,6 +37,23 @@ public class AlcoProperties {
         if (requestDelay == null || requestDelay.isNegative()) {
             throw new ConfigurationException("ALCO_REQUEST_DELAY must not be negative");
         }
+    }
+
+    public void validateReportSource() {
+        if (reportSource == null || reportSource.toString().isBlank()) {
+            throw new ConfigurationException("ALCO_REPORT_SOURCE must point to a snapshot directory");
+        }
+        Path source = reportSource.toAbsolutePath().normalize();
+        if (!Files.isDirectory(source)) {
+            throw new ConfigurationException("ALCO_REPORT_SOURCE must point to an existing snapshot directory");
+        }
+        if (!Files.isRegularFile(source.resolve("manifest.json"))) {
+            throw new ConfigurationException("ALCO_REPORT_SOURCE does not contain manifest.json");
+        }
+    }
+
+    public boolean isReportOnly() {
+        return reportSource != null;
     }
 
     public URI getBaseUrl() {
@@ -67,6 +86,14 @@ public class AlcoProperties {
 
     public void setOutputDir(Path outputDir) {
         this.outputDir = outputDir;
+    }
+
+    public Path getReportSource() {
+        return reportSource;
+    }
+
+    public void setReportSource(Path reportSource) {
+        this.reportSource = reportSource;
     }
 
     public CrawlPeriod getPeriod() {

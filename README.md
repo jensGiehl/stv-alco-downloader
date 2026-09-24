@@ -29,6 +29,7 @@ Kommandozeilenargumente noch in versionierten Dateien stehen.
 | `ALCO_USERNAME` | ja | – | Benutzername für ALCO-web |
 | `ALCO_PASSWORD` | ja | – | Passwort für ALCO-web |
 | `ALCO_OUTPUT_DIR` | nein | `./backups` | Basisordner für Snapshots |
+| `ALCO_REPORT_SOURCE` | nur Report-Modus | – | Vorhandener Snapshot-Ordner, dessen HTML-Report neu erzeugt wird |
 | `ALCO_PERIOD` | nein | `all` | `all`, `current-year` oder `current-month` |
 | `ALCO_BASE_URL` | nein | `https://stv.alco-web.de` | Basis-URL der Installation |
 | `ALCO_REQUEST_DELAY` | nein | `500ms` | Mindestabstand zwischen Requests |
@@ -40,6 +41,30 @@ java -jar target/stv-alco-downloader-1.0.0-SNAPSHOT.jar --alco.period=current-ye
 ```
 
 Die Zugangsdaten bleiben dabei weiterhin in `ALCO_USERNAME` und `ALCO_PASSWORD`.
+
+### Report aus bestehenden JSON-Dateien neu erzeugen
+
+Der HTML-Report wird grundsätzlich aus den zuvor gespeicherten JSON-Dateien aufgebaut. Dadurch kann die
+Darstellung geändert und anschließend neu erzeugt werden, ohne ALCO-web erneut aufzurufen oder Daten und
+Dokumente noch einmal herunterzuladen. Als Quelle wird der vollständige Snapshot-Ordner mit
+`manifest.json` und dem Unterordner `data` angegeben:
+
+```bash
+java -jar target/stv-alco-downloader-1.0.0-SNAPSHOT.jar \
+  --alco.report-source=./backups/2026-09-23_20_26
+```
+
+Unter Windows:
+
+```powershell
+java -jar target/stv-alco-downloader-1.0.0-SNAPSHOT.jar `
+  --alco.report-source=.\backups\2026-09-23_20_26
+```
+
+In diesem Modus werden keine Zugangsdaten benötigt und keine Netzwerkverbindungen zu ALCO-web aufgebaut.
+Die vorhandenen `index.html`, `documents.html`, Vertragsseiten und Report-Assets werden im Snapshot neu
+geschrieben. Auch die übergeordnete Snapshot-Übersicht wird aktualisiert. JSON-Dateien, Rohseiten und
+Dokumente bleiben unverändert.
 
 ## Protokollierung
 
@@ -148,6 +173,10 @@ Salden-Kontoauszug steht die Kontobezeichnung direkt in der Abschnittsüberschri
 verwenden dort den ersten Buchungstext. Die mitgelieferten Bootstrap-Assets liegen
 vollständig im Backup; zum Lesen ist weder ein Webserver noch eine Internetverbindung erforderlich.
 
+Beim normalen Backup werden zuerst `manifest.json`, `data/contracts.json`, `data/documents.json` und alle
+Dateien unter `data/pages` geschrieben. Erst danach liest der Report diese JSON-Dateien wieder ein und erzeugt
+die HTML-Seiten. Damit verwenden der normale Lauf und der Report-only-Modus exakt dieselbe Datenquelle.
+
 Die Dateien enthalten personenbezogene und finanzielle Daten. Der Backup-Ordner muss entsprechend geschützt
 und in eine vorhandene Sicherungsstrategie aufgenommen werden.
 
@@ -210,6 +239,16 @@ docker run --rm \
 `/srv/stv-alco-backups` ist der persistente Ausgabeordner auf dem Host. `/data` ist der dazugehörige Ordner im
 Container.
 
+Ein vorhandener Snapshot kann im Container ebenfalls ohne Zugangsdaten neu gerendert werden:
+
+```bash
+docker run --rm \
+  --name stv-alco-report \
+  -e ALCO_REPORT_SOURCE=/data/2026-09-23_20_26 \
+  -v /srv/stv-alco-backups:/data \
+  stv-alco-downloader:latest
+```
+
 ### Hintergrundstart mit veröffentlichtem Image
 
 `IMAGE` muss durch den Namen des veröffentlichten Images ersetzt werden, beispielsweise
@@ -246,10 +285,10 @@ Die Planung erfolgt auf dem Host. Beispiel für einen Lauf täglich um 03:15 Uhr
 
 | Code | Bedeutung |
 | --- | --- |
-| `0` | Backup vollständig erstellt |
+| `0` | Backup oder Report vollständig erstellt |
 | `2` | Konfiguration oder Anmeldung fehlgeschlagen |
 | `3` | Crawl unvollständig oder Remote-Fehler |
-| `4` | Backup konnte nicht geschrieben werden |
+| `4` | Snapshot-JSON konnte nicht gelesen oder der Report nicht geschrieben werden |
 
 ## Sicherheit und Grenzen
 

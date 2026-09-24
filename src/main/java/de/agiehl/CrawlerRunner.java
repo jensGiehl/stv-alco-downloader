@@ -27,14 +27,21 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
     public void run(ApplicationArguments args) {
         long startedNanos = System.nanoTime();
         CrawlProgress progress = new CrawlProgress();
+        boolean reportOnly = properties.isReportOnly();
         try {
+            if (reportOnly) {
+                generateReport();
+                exitCode = 0;
+                return;
+            }
             properties.validate();
             LOGGER.info("Starting ALCO backup: baseUrl={}, period={}, outputDirectory={}", safeBaseUrl(),
                     properties.getPeriod(), properties.getOutputDir().toAbsolutePath().normalize());
             runWithSingleSessionRestart(progress);
         } catch (ConfigurationException | AuthenticationException exception) {
             exitCode = 2;
-            LOGGER.error("Crawler configuration or authentication failed: {}", exception.getMessage());
+            String operation = reportOnly ? "Report configuration" : "Crawler configuration or authentication";
+            LOGGER.error("{} failed: {}", operation, exception.getMessage());
         } catch (StorageException exception) {
             exitCode = 4;
             LOGGER.error("Writing the backup failed: {}", exception.getMessage());
@@ -43,10 +50,15 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
             LOGGER.error("The crawl did not complete: {}", exception.getMessage());
         } catch (RuntimeException exception) {
             exitCode = 3;
-            LOGGER.error("The crawl failed unexpectedly: {}", exception.getClass().getSimpleName());
-            LOGGER.debug("Unexpected crawler failure", exception);
+            String operation = reportOnly ? "report generation" : "crawl";
+            LOGGER.error("The {} failed unexpectedly: {}", operation, exception.getClass().getSimpleName());
+            LOGGER.debug("Unexpected {} failure", operation, exception);
         } finally {
-            logSummary(progress, elapsedMillis(startedNanos));
+            if (reportOnly) {
+                logReportSummary(elapsedMillis(startedNanos));
+            } else {
+                logSummary(progress, elapsedMillis(startedNanos));
+            }
         }
     }
 
@@ -68,6 +80,26 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
                 progress.sessionRestarted();
                 LOGGER.warn("The ALCO session expired; restarting the crawl once");
             }
+        }
+    }
+
+    private void generateReport() {
+        properties.validateReportSource();
+        var source = properties.getReportSource().toAbsolutePath().normalize();
+        LOGGER.info("Generating ALCO report from snapshot JSON: snapshot={}", source);
+        new HtmlReportWriter(source).write();
+    }
+
+    private void logReportSummary(long durationMillis) {
+        String status = exitCode == 0 ? "SUCCESS" : "FAILED";
+        var source = properties.getReportSource();
+        String snapshot = source == null ? "-" : source.toAbsolutePath().normalize().toString();
+        if (exitCode == 0) {
+            LOGGER.info("ALCO report generation finished: status={}, durationMs={}, snapshot={}", status,
+                    durationMillis, snapshot);
+        } else {
+            LOGGER.error("ALCO report generation finished: status={}, durationMs={}, snapshot={}", status,
+                    durationMillis, snapshot);
         }
     }
 

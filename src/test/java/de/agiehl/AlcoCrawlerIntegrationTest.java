@@ -146,6 +146,46 @@ class AlcoCrawlerIntegrationTest {
                 .contains("snapshot=-");
     }
 
+    @Test
+    void regeneratesReportFromExistingJsonWithoutCredentials(CapturedOutput output) throws Exception {
+        Path snapshot = outputDirectory.resolve("existing-snapshot");
+        Files.createDirectories(snapshot.resolve("data"));
+        Files.writeString(snapshot.resolve("manifest.json"), """
+                {
+                  "schemaVersion": 1,
+                  "status": "COMPLETE",
+                  "startedAt": "2026-09-22T10:15:30Z",
+                  "period": "ALL",
+                  "contracts": 1,
+                  "pages": 0,
+                  "documents": 0
+                }
+                """);
+        Files.writeString(snapshot.resolve("data/contracts.json"), """
+                [{
+                  "id": "0",
+                  "contractNumber": "71-10-1",
+                  "description": "Report aus JSON",
+                  "selectionUri": "https://stv.alco-web.de/homeV.php?id=0"
+                }]
+                """);
+        Files.writeString(snapshot.resolve("data/documents.json"), "[]");
+        SpringApplication application = new SpringApplication(StvAlcoDownloaderApplication.class);
+        application.setBannerMode(Banner.Mode.OFF);
+        application.setWebApplicationType(WebApplicationType.NONE);
+
+        ConfigurableApplicationContext context = application.run(
+                "--alco.report-source=" + snapshot,
+                "--logging.level.root=ERROR");
+        int exitCode = SpringApplication.exit(context);
+
+        assertThat(exitCode).isZero();
+        assertThat(Files.readString(snapshot.resolve("index.html"))).contains("Report aus JSON", "71-10-1");
+        assertThat(Files.readString(snapshot.resolve("contracts/0/index.html"))).contains("Report aus JSON");
+        assertThat(output).contains("ALCO report generation finished: status=SUCCESS")
+                .doesNotContain("Authenticating with ALCO");
+    }
+
     private String home() {
         return """
                 <html><body><div>Vertrag:</div><table>

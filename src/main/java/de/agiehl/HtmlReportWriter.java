@@ -9,12 +9,14 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
@@ -27,30 +29,28 @@ final class HtmlReportWriter {
     private static final Set<String> MASTER_DATA_SECTIONS = Set.of("home", "vertragszahlung", "einheit");
 
     private final Path root;
-    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-    private final List<ContractReference> contracts = new ArrayList<>();
-    private final List<StoredSection> sections = new ArrayList<>();
-    private final List<DocumentData> documents = new ArrayList<>();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+    private final Map<String, Object> manifest;
+    private final List<ContractReference> contracts;
+    private final List<StoredSection> sections;
+    private final List<DocumentData> documents;
 
     HtmlReportWriter(Path root) {
-        this.root = root;
+        this.root = root.toAbsolutePath().normalize();
+        try {
+            this.manifest = objectMapper.readValue(this.root.resolve("manifest.json").toFile(),
+                    new TypeReference<>() { });
+            this.contracts = readList(this.root.resolve("data/contracts.json"), new TypeReference<>() { });
+            this.sections = readSections();
+            this.documents = readList(this.root.resolve("data/documents.json"), new TypeReference<>() { });
+        } catch (IOException | RuntimeException exception) {
+            throw new StorageException("Cannot read snapshot JSON for HTML report", exception);
+        }
     }
 
-    void contracts(List<ContractReference> values) {
-        contracts.clear();
-        contracts.addAll(values);
-    }
-
-    void section(SectionData value, String rawPath) {
-        sections.add(new StoredSection(value, rawPath));
-    }
-
-    void documents(List<DocumentData> values) {
-        documents.clear();
-        documents.addAll(values);
-    }
-
-    void write(Map<String, Object> manifest) {
+    void write() {
         try {
             copyAssets(root);
             writeFile(root.resolve("index.html"), overview(manifest));
@@ -63,6 +63,43 @@ final class HtmlReportWriter {
         } catch (IOException exception) {
             throw new StorageException("Cannot write HTML report", exception);
         }
+    }
+
+    private <T> List<T> readList(Path path, TypeReference<List<T>> type) throws IOException {
+        if (!Files.isRegularFile(path)) {
+            return List.of();
+        }
+        List<T> values = objectMapper.readValue(path.toFile(), type);
+        return values == null ? List.of() : List.copyOf(values);
+    }
+
+    private List<StoredSection> readSections() throws IOException {
+        Path pages = root.resolve("data/pages");
+        if (!Files.isDirectory(pages)) {
+            return List.of();
+        }
+        List<Path> jsonFiles;
+        try (var paths = Files.walk(pages)) {
+            jsonFiles = paths.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".json"))
+                    .sorted(Comparator.comparing((Path path) -> path.getFileName().toString())
+                            .thenComparing(Path::toString))
+                    .toList();
+        }
+        List<StoredSection> result = new ArrayList<>(jsonFiles.size());
+        for (Path jsonFile : jsonFiles) {
+            SectionData section = objectMapper.readValue(jsonFile.toFile(), SectionData.class);
+            result.add(new StoredSection(section, rawPath(jsonFile, pages)));
+        }
+        return List.copyOf(result);
+    }
+
+    private String rawPath(Path jsonFile, Path pages) {
+        Path relativeJson = pages.relativize(jsonFile);
+        String fileName = relativeJson.getFileName().toString();
+        Path relativeHtml = relativeJson.resolveSibling(fileName.substring(0, fileName.length() - 5) + ".html");
+        Path rawFile = root.resolve("raw").resolve(relativeHtml);
+        return Files.isRegularFile(rawFile) ? root.relativize(rawFile).toString().replace('\\', '/') : null;
     }
 
     private void writeCatalog() throws IOException {
