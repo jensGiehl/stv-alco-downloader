@@ -187,13 +187,40 @@ docker build -t stv-alco-downloader:latest .
 ```
 
 Das Multi-Stage-Image verwendet Java 26. Der Prozess läuft als nicht privilegierter Benutzer und schreibt nur
-in das eingebundene Verzeichnis `/data`.
+in das eingebundene Verzeichnis `/data`. Der Maven-Build läuft auf der Architektur des Build-Rechners;
+das architekturunabhängige Java-JAR wird in das Laufzeit-Image der jeweiligen Zielplattform übernommen.
+
+### Raspberry Pi und ARM64
+
+Das veröffentlichte Image unterstützt `linux/amd64` und `linux/arm64`. Auf einem Raspberry Pi wird ein
+64-Bit-Betriebssystem benötigt, beispielsweise Raspberry Pi OS (64-bit) oder Ubuntu ARM64. Docker wählt
+beim Abruf automatisch die passende Variante aus; die unten gezeigten Startbefehle gelten auch für den Pi.
+32-Bit-Systeme (`linux/arm/v7`) werden nicht unterstützt.
+
+Nach der Veröffentlichung eines neuen Images lässt sich die ARM64-Variante gezielt abrufen:
+
+```bash
+docker pull --platform linux/arm64 ghcr.io/jensgiehl/stv-alco-downloader:latest
+```
+
+Für einen eigenen Build mit beiden Architekturen werden Docker Buildx und bei abweichender Host-Architektur
+QEMU-Unterstützung benötigt. Docker Desktop bringt diese Unterstützung mit. Das Beispiel veröffentlicht
+beide Varianten unter einem gemeinsamen Image-Tag in einer Registry, bei der man zuvor angemeldet sein muss:
+
+```bash
+IMAGE=ghcr.io/mein-benutzer/stv-alco-downloader:latest
+docker buildx create --name alco-multiarch --driver docker-container --use
+docker buildx build --platform linux/amd64,linux/arm64 -t "$IMAGE" --push .
+docker buildx imagetools inspect "$IMAGE"
+```
 
 ### GitHub Actions und Container Registry
 
 Bei jedem Push auf `main` oder `master` baut die GitHub Action `.github/workflows/docker-image.yml` das
-Docker-Image und veröffentlicht es in der GitHub Container Registry. Der Maven-Build und die Tests laufen dabei
-im Build-Stage des Dockerfiles. Das Image erhält folgende Tags:
+Docker-Image für `linux/amd64` und `linux/arm64` und veröffentlicht beide Varianten als gemeinsames
+Multi-Plattform-Image in der GitHub Container Registry. QEMU ermöglicht die ARM64-Build-Schritte auf dem
+GitHub-Runner. Der Maven-Build und die Tests laufen dabei im Build-Stage des Dockerfiles. Das Image erhält
+folgende Tags:
 
 - `ghcr.io/jensgiehl/stv-alco-downloader:latest`
 - `ghcr.io/jensgiehl/stv-alco-downloader:main` beziehungsweise `:master`
