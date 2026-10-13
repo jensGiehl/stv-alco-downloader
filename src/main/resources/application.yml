@@ -13,6 +13,10 @@ alco:
   period: ${ALCO_PERIOD:all}
   request-delay: ${ALCO_REQUEST_DELAY:500ms}
 
+telegram:
+  bot-token: ${TELEGRAM_BOT_TOKEN:}
+  chat-id: ${TELEGRAM_CHAT_ID:}
+
 logging:
   level:
     root: INFO

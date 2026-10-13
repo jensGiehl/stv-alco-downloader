@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ConfigurableApplicationContext;
 
 @SpringBootApplication
-@EnableConfigurationProperties(AlcoProperties.class)
+@EnableConfigurationProperties({AlcoProperties.class, TelegramProperties.class})
 public class StvAlcoDownloaderApplication {
 
     public static void main(String[] args) {

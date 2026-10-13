@@ -1,6 +1,7 @@
 package de.agiehl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -90,7 +91,8 @@ class AlcoCrawlerIntegrationTest {
         Clock clock = Clock.fixed(Instant.parse("2026-09-22T10:15:30Z"), ZoneOffset.UTC);
         AlcoCrawler crawler = new AlcoCrawler(properties, client, new PageParser(clock), clock);
 
-        Path snapshot = crawler.crawl();
+        CrawlProgress progress = new CrawlProgress();
+        Path snapshot = crawler.crawl(progress);
 
         assertThat(Files.readString(snapshot.resolve("manifest.json"))).contains("\"status\" : \"COMPLETE\"");
         Path pagesDirectory = snapshot.resolve("data/pages");
@@ -101,6 +103,46 @@ class AlcoCrawlerIntegrationTest {
             assertThat(Files.readString(balances)).contains("Wartung%20BHKW%2070%25");
         }
         assertThat(accountRequests).hasValue(1);
+        assertThat(progress.records()).isEqualTo(4);
+        assertThat(Files.readString(snapshot.resolve("manifest.json"))).contains("\"records\" : 4");
+    }
+
+    @Test
+    void retainsSavedDocumentAndRowCountsWhenTheSessionExpires() throws Exception {
+        server.removeContext("/homeV.php");
+        server.createContext("/homeV.php", exchange -> response(exchange,
+                home().replace("</body>", "<a href=\"showpdf.php?ID=7\">Beleg</a></body>"), null));
+        byte[] pdf = "%PDF-1.7\npartial backup".getBytes(StandardCharsets.US_ASCII);
+        server.createContext("/showpdf.php", exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "application/pdf");
+            exchange.sendResponseHeaders(200, pdf.length);
+            exchange.getResponseBody().write(pdf);
+            exchange.close();
+        });
+        server.removeContext("/einheit.php");
+        server.createContext("/einheit.php", exchange -> response(exchange,
+                "<form><input name=\"password\"><h1>Bitte anmelden</h1></form>", null));
+        AlcoProperties properties = new AlcoProperties();
+        properties.setBaseUrl(URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
+        properties.setUsername("user");
+        properties.setPassword("password");
+        properties.setOutputDir(outputDirectory);
+        properties.setRequestDelay(Duration.ZERO);
+        Clock clock = Clock.fixed(Instant.parse("2026-09-22T10:15:30Z"), ZoneOffset.UTC);
+        AlcoCrawler crawler = new AlcoCrawler(properties, new AlcoHttpClient(properties), new PageParser(clock), clock);
+        CrawlProgress progress = new CrawlProgress();
+
+        assertThatThrownBy(() -> crawler.crawl(progress)).isInstanceOf(SessionExpiredException.class);
+
+        assertThat(progress.pages()).isEqualTo(2);
+        assertThat(progress.records()).isEqualTo(1);
+        assertThat(progress.documentsDiscovered()).isEqualTo(1);
+        assertThat(progress.documentsDownloaded()).isEqualTo(1);
+        assertThat(progress.attachmentBytes()).isEqualTo(pdf.length);
+        Path snapshot = Path.of(progress.snapshot());
+        assertThat(Files.readString(snapshot.resolve("manifest.json")))
+                .contains("\"status\" : \"FAILED\"", "\"records\" : 1");
+        assertThat(snapshot.resolve("files/home/2026-09-22/7.pdf")).isRegularFile();
     }
 
     @Test
@@ -111,6 +153,8 @@ class AlcoCrawlerIntegrationTest {
         Path springOutput = outputDirectory.resolve("spring");
 
         ConfigurableApplicationContext context = application.run(
+                "--telegram.bot-token=",
+                "--telegram.chat-id=",
                 "--alco.base-url=http://127.0.0.1:" + server.getAddress().getPort(),
                 "--alco.username=user",
                 "--alco.password=password",
@@ -135,6 +179,8 @@ class AlcoCrawlerIntegrationTest {
         application.setWebApplicationType(WebApplicationType.NONE);
 
         ConfigurableApplicationContext context = application.run(
+                "--telegram.bot-token=",
+                "--telegram.chat-id=",
                 "--alco.username=",
                 "--alco.password=password",
                 "--logging.level.root=ERROR");
@@ -175,6 +221,8 @@ class AlcoCrawlerIntegrationTest {
         application.setWebApplicationType(WebApplicationType.NONE);
 
         ConfigurableApplicationContext context = application.run(
+                "--telegram.bot-token=",
+                "--telegram.chat-id=",
                 "--alco.report-source=" + snapshot,
                 "--logging.level.root=ERROR");
         int exitCode = SpringApplication.exit(context);

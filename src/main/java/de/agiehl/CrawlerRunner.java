@@ -16,11 +16,13 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
 
     private final AlcoProperties properties;
     private final AlcoCrawler crawler;
+    private final TelegramNotifier telegramNotifier;
     private int exitCode;
 
-    CrawlerRunner(AlcoProperties properties, AlcoCrawler crawler) {
+    CrawlerRunner(AlcoProperties properties, AlcoCrawler crawler, TelegramNotifier telegramNotifier) {
         this.properties = properties;
         this.crawler = crawler;
+        this.telegramNotifier = telegramNotifier;
     }
 
     @Override
@@ -57,6 +59,7 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
             if (reportOnly) {
                 logReportSummary(elapsedMillis(startedNanos));
             } else {
+                telegramNotifier.notifyResult(exitCode, progress);
                 logSummary(progress, elapsedMillis(startedNanos));
             }
         }
@@ -107,7 +110,7 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
         String status = exitCode == 0 ? "SUCCESS" : "FAILED";
         String summary = "ALCO backup finished: status={}, durationMs={}, attempts={}, sessionRestarts={}, "
                 + "contractsCompleted={}, contractsDiscovered={}, pages={}, documentsDownloaded={}, "
-                + "documentsDiscovered={}, attachmentBytes={}, warnings={}, snapshot={}";
+                + "documentsDiscovered={}, attachmentBytes={}, warnings={}, records={}, snapshot={}";
         Object[] values = {
                 status,
                 durationMillis,
@@ -120,6 +123,7 @@ final class CrawlerRunner implements ApplicationRunner, ExitCodeGenerator {
                 progress.documentsDiscovered(),
                 progress.attachmentBytes(),
                 progress.warnings(),
+                progress.records(),
                 progress.snapshot()
         };
         if (exitCode == 0) {

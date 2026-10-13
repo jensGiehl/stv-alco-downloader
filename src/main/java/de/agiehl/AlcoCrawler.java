@@ -76,20 +76,20 @@ final class AlcoCrawler {
                 LOGGER.info("Completed contract {}/{}: number='{}'", index + 1, contracts.size(),
                         contract.contractNumber());
             }
-            progress.documentsDiscovered(attachments.size());
             List<DocumentData> documents = attachments.documents();
-            progress.documentsDownloaded(documents.size(), documents.stream().mapToLong(DocumentData::size).sum());
             store.writeDocuments(documents);
-            progress.pages(store.pageCount());
-            progress.warnings(store.warningCount());
             store.complete(clock.instant());
             return store.root();
         } catch (RuntimeException exception) {
-            progress.pages(store.pageCount());
-            progress.documentsDiscovered(attachments.size());
-            progress.warnings(store.warningCount());
             store.fail(clock.instant(), safeFailure(exception));
             throw exception;
+        } finally {
+            List<DocumentData> documents = attachments.documents();
+            progress.pages(store.pageCount());
+            progress.records(store.recordCount());
+            progress.documentsDiscovered(attachments.size());
+            progress.documentsDownloaded(documents.size(), documents.stream().mapToLong(DocumentData::size).sum());
+            progress.warnings(store.warningCount());
         }
     }
 

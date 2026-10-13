@@ -9,6 +9,7 @@ final class CrawlProgress {
     private int contractsDiscovered;
     private int contractsCompleted;
     private int pages;
+    private long records;
     private int documentsDiscovered;
     private int documentsDownloaded;
     private long attachmentBytes;
@@ -20,6 +21,7 @@ final class CrawlProgress {
         contractsDiscovered = 0;
         contractsCompleted = 0;
         pages = 0;
+        records = 0;
         documentsDiscovered = 0;
         documentsDownloaded = 0;
         attachmentBytes = 0;
@@ -45,6 +47,10 @@ final class CrawlProgress {
 
     void pages(int count) {
         pages = count;
+    }
+
+    void records(long count) {
+        records = count;
     }
 
     void documentsDiscovered(int count) {
@@ -78,6 +84,10 @@ final class CrawlProgress {
 
     int pages() {
         return pages;
+    }
+
+    long records() {
+        return records;
     }
 
     int documentsDiscovered() {

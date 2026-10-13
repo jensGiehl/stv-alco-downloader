@@ -43,6 +43,7 @@ final class SnapshotStore {
     private final Map<String, Object> manifest = new LinkedHashMap<>();
     private final List<String> warnings = new ArrayList<>();
     private int pageCount;
+    private long recordCount;
 
     SnapshotStore(AlcoProperties properties, Clock clock) {
         this.clock = clock;
@@ -104,8 +105,9 @@ final class SnapshotStore {
         String prefix = "%04d".formatted(number);
         Path pageDirectory = dataDirectory.resolve("pages").resolve(page).resolve(period).resolve(contract);
         writeJson(pageDirectory.resolve(prefix + ".json"), section);
-        writeRaw(page, period, prefix, contract, rawResult);
         pageCount++;
+        recordCount += section.tables().stream().mapToLong(table -> table.rows().size()).sum();
+        writeRaw(page, period, prefix, contract, rawResult);
     }
 
     void writeDocuments(List<DocumentData> documents) {
@@ -153,10 +155,15 @@ final class SnapshotStore {
         return pageCount;
     }
 
+    long recordCount() {
+        return recordCount;
+    }
+
     void complete(Instant finishedAt) {
         manifest.put("status", "COMPLETE");
         manifest.put("finishedAt", finishedAt);
         manifest.put("pages", pageCount);
+        manifest.put("records", recordCount);
         manifest.put("warnings", List.copyOf(warnings));
         writeManifest();
         new HtmlReportWriter(root).write();
@@ -166,6 +173,7 @@ final class SnapshotStore {
         manifest.put("status", "FAILED");
         manifest.put("finishedAt", finishedAt);
         manifest.put("pages", pageCount);
+        manifest.put("records", recordCount);
         manifest.put("warnings", List.copyOf(warnings));
         manifest.put("failure", reason);
         writeManifest();

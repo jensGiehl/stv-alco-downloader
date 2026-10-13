@@ -33,6 +33,8 @@ Kommandozeilenargumente noch in versionierten Dateien stehen.
 | `ALCO_PERIOD` | nein | `all` | `all`, `current-year` oder `current-month` |
 | `ALCO_BASE_URL` | nein | `https://stv.alco-web.de` | Basis-URL der Installation |
 | `ALCO_REQUEST_DELAY` | nein | `500ms` | Mindestabstand zwischen Requests |
+| `TELEGRAM_BOT_TOKEN` | nein | leer | Vollständiger BotFather-Token einschließlich Bot-ID und geheimem Token-Anteil |
+| `TELEGRAM_CHAT_ID` | nein | leer | ID des Telegram-Chats, der das Backup-Ergebnis erhalten soll |
 
 Nicht geheime Werte können auch als Spring-Boot-Argument übergeben werden:
 
@@ -41,6 +43,36 @@ java -jar target/stv-alco-downloader-1.0.0-SNAPSHOT.jar --alco.period=current-ye
 ```
 
 Die Zugangsdaten bleiben dabei weiterhin in `ALCO_USERNAME` und `ALCO_PASSWORD`.
+
+### Optionale Telegram-Benachrichtigung
+
+Sind `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` vollständig gesetzt, wird nach dem endgültigen Ergebnis
+eines Backups einmal eine Textnachricht über
+[Telegram `sendMessage`](https://core.telegram.org/bots/api#sendmessage) versendet. Sie enthält den Status
+„erfolgreich“ beziehungsweise „nicht erfolgreich“, die Anzahl heruntergeladener PDF-Dokumente und die Anzahl
+gespeicherter Datensätze. Die Datensatzanzahl ist die Summe aller gespeicherten Tabellenzeilen und entspricht
+der Kennzahl „Tabellenzeilen“ im HTML-Report. Bei einem fehlgeschlagenen Backup werden die bereits
+gespeicherten Dokumente und Datensätze des letzten Versuchs gemeldet. Ein Session-Neustart löst keine
+Zwischennachricht aus.
+
+Fehlt eine der beiden Variablen oder enthält sie nur Leerzeichen, wird Telegram überhaupt nicht aufgerufen.
+Ein fehlgeschlagener Nachrichtenversand wird als Warnung protokolliert und verändert den Exit-Code des
+Backups nicht. Beim reinen Neuerzeugen eines Reports werden keine Telegram-Nachrichten versendet.
+
+Den Bot mit [@BotFather erstellen](https://core.telegram.org/bots#how-do-i-create-a-bot) und den vollständigen
+Authentifizierungstoken übernehmen; eine rein numerische Bot-ID genügt nicht. Für einen privaten Chat den
+Bot in Telegram öffnen und mit `/start` anschreiben. Die Chat-ID lässt sich anschließend beispielsweise über
+[`getUpdates`](https://core.telegram.org/bots/api#getupdates) aus `message.chat.id` einer eingegangenen
+Nachricht ermitteln.
+
+Die folgenden Platzhalter in der privaten, nicht versionierten `stv-alco.env` durch die eigenen Werte ersetzen:
+
+```dotenv
+TELEGRAM_BOT_TOKEN=<bot-id>:<geheimer-token-anteil>
+TELEGRAM_CHAT_ID=<chat-id>
+```
+
+Die unten gezeigten Docker-Aufrufe übernehmen diese Werte über `--env-file`.
 
 ### Report aus bestehenden JSON-Dateien neu erzeugen
 
@@ -244,6 +276,8 @@ ALCO_PASSWORD=mein-passwort
 ALCO_PERIOD=all
 ALCO_OUTPUT_DIR=/data
 ALCO_REQUEST_DELAY=500ms
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
 Auf dem Ubuntu-Server sollte sie außerhalb des Projekts liegen und nur für den Besitzer lesbar sein:
@@ -319,8 +353,8 @@ Die Planung erfolgt auf dem Host. Beispiel für einen Lauf täglich um 03:15 Uhr
 
 ## Sicherheit und Grenzen
 
-- Der HTTP-Client akzeptiert POST ausschließlich für `index.php` und `obj-abrechnung.php`.
-- Nachrichtenversand, Stammdatenänderungen, Passwortänderungen und Logout-Endpunkte sind technisch blockiert.
+- Der ALCO-web-HTTP-Client akzeptiert POST ausschließlich für `index.php` und `obj-abrechnung.php`.
+- Nachrichtenversand in ALCO-web, Stammdatenänderungen, Passwortänderungen und Logout-Endpunkte sind technisch blockiert.
 - Wegen der serverseitigen Session werden Verträge und Zeiträume strikt nacheinander verarbeitet.
 - Bei einem Sessionablauf wird der komplette Crawl höchstens einmal neu gestartet.
 - Das echte Portal wird durch die normalen Tests nicht angesprochen.

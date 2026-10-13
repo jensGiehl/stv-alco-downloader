@@ -1,6 +1,7 @@
 package de.agiehl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -66,6 +67,45 @@ class SnapshotStoreTest {
         assertThat(secondStore.root().getFileName().toString()).isEqualTo("2026-09-22_12_15_2");
         assertThat(firstStore.root()).isDirectory();
         assertThat(secondStore.root()).isDirectory();
+    }
+
+    @Test
+    void countsSavedRowsAcrossTablesAndRetainsThemAfterFailure() throws Exception {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-22T10:15:30Z"), ZoneOffset.UTC);
+        SnapshotStore store = new SnapshotStore(properties(), clock);
+        HttpResult raw = new HttpResult(URI.create("https://stv.alco-web.de/kontoauszug.php"), 200, "text/html",
+                """
+                <html><body>
+                  <table><tr><th>Buchung</th></tr><tr><td>Erste</td></tr><tr><td>Zweite</td></tr></table>
+                  <table><tr><th>Saldo</th></tr><tr><td>10,00</td></tr></table>
+                </body></html>
+                """.getBytes(StandardCharsets.UTF_8));
+        SectionData section = new PageParser(clock).parse("kontoauszug", "0", raw, Map.of());
+
+        store.writeSection(section, raw);
+        store.fail(clock.instant(), "Crawl interrupted");
+
+        assertThat(store.pageCount()).isEqualTo(1);
+        assertThat(store.recordCount()).isEqualTo(3);
+        assertThat(Files.readString(store.root().resolve("manifest.json")))
+                .contains("\"status\" : \"FAILED\"", "\"records\" : 3");
+    }
+
+    @Test
+    void countsSavedRowsWhenWritingTheRawPageFails() throws Exception {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-22T10:15:30Z"), ZoneOffset.UTC);
+        SnapshotStore store = new SnapshotStore(properties(), clock);
+        HttpResult raw = new HttpResult(URI.create("https://stv.alco-web.de/kontoauszug.php"), 200, "text/html",
+                "<html><body><table><tr><th>Buchung</th></tr><tr><td>Gesichert</td></tr></table></body></html>"
+                        .getBytes(StandardCharsets.UTF_8));
+        SectionData section = new PageParser(clock).parse("kontoauszug", "0", raw, Map.of());
+        Files.writeString(store.root().resolve("raw/kontoauszug"), "blocked");
+
+        assertThatThrownBy(() -> store.writeSection(section, raw)).isInstanceOf(StorageException.class);
+
+        assertThat(store.pageCount()).isEqualTo(1);
+        assertThat(store.recordCount()).isEqualTo(1);
+        assertThat(store.root().resolve("data/pages/kontoauszug/2026-09-22/0/0001.json")).isRegularFile();
     }
 
     private AlcoProperties properties() {
